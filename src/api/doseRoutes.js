@@ -6,7 +6,29 @@ export async function handleDoseRoutes(request, env, url, session) {
 
   // 1. GET /api/doses
   if (path === '/api/doses' && method === 'GET') {
-    const { doses } = await getDoses(env);
+    let doses = [];
+    try {
+      const res = await getDoses(env);
+      if (res && Array.isArray(res.doses) && res.doses.length > 0) {
+        doses = res.doses;
+      }
+    } catch (err) {
+      console.warn('GitHub getDoses error, trying fallback:', err);
+    }
+
+    // Fallback to static asset doses if empty
+    if (!doses || doses.length === 0) {
+      if (env.ASSETS) {
+        try {
+          const assetRes = await env.ASSETS.fetch(new Request(new URL('/data/doses.json', request.url)));
+          if (assetRes && assetRes.status === 200) {
+            const data = await assetRes.json();
+            doses = Array.isArray(data) ? data : (data.doses || []);
+          }
+        } catch (e) {}
+      }
+    }
+
     return new Response(JSON.stringify(doses), {
       headers: { 'Content-Type': 'application/json' }
     });

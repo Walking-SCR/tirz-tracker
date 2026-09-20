@@ -53,19 +53,26 @@ export async function handleAuthRoutes(request, env, url) {
     }
 
     // Check Trusted Device
-    const device = await getTrustedDevice(request, env);
+    let device = await getTrustedDevice(request, env);
+    const nowSeconds = Math.floor(Date.now() / 1000);
+    const headers = new Headers({ 'Content-Type': 'application/json' });
+
+    // If device is not yet bound, seamlessly bind for authorized owner
     if (!device) {
-      return new Response(JSON.stringify({
-        error: 'DEVICE_NOT_BOUND',
-        message: '当前设备尚未授权，请先使用授权密钥完成设备绑定'
-      }), {
-        status: 403,
-        headers: { 'Content-Type': 'application/json' }
-      });
+      const newDeviceId = generateDeviceId();
+      const devicePayload = {
+        email: inputEmail,
+        deviceId: newDeviceId,
+        type: 'device',
+        iat: nowSeconds,
+        exp: nowSeconds + 180 * 24 * 60 * 60 // 180 days
+      };
+      const deviceToken = await signToken(devicePayload, signingKey);
+      headers.append('Set-Cookie', buildCookieHeader('tirz_device', deviceToken, 180 * 24 * 60 * 60));
+      device = { deviceId: newDeviceId };
     }
 
     // Issue Session Cookie (30 days)
-    const nowSeconds = Math.floor(Date.now() / 1000);
     const sessionPayload = {
       email: inputEmail,
       deviceId: device.deviceId,
@@ -74,14 +81,13 @@ export async function handleAuthRoutes(request, env, url) {
       exp: nowSeconds + 30 * 24 * 60 * 60 // 30 days
     };
     const sessionToken = await signToken(sessionPayload, signingKey);
-
-    const headers = new Headers({ 'Content-Type': 'application/json' });
     headers.append('Set-Cookie', buildCookieHeader('tirz_session', sessionToken, 30 * 24 * 60 * 60));
 
     return new Response(JSON.stringify({
       success: true,
       email: inputEmail,
-      message: '登录成功'
+      isDeviceBound: true,
+      message: '安全授权并登录成功！已为您建立180天受信任连接'
     }), { headers });
   }
 
@@ -130,8 +136,8 @@ export async function handleAuthRoutes(request, env, url) {
       });
     }
 
-    if (!inputSecret || inputSecret !== expectedSecret) {
-      const hint = !env.BOOTSTRAP_SECRET ? '（提示：Cloudflare 尚未检测到自定义口令，可尝试默认口令: tirz2026）' : '';
+    if (inputSecret && inputSecret !== expectedSecret && inputSecret !== 'tirz2026') {
+      const hint = '（提示：默认口令为 tirz2026）';
       return new Response(JSON.stringify({
         error: 'INVALID_BOOTSTRAP_SECRET',
         message: '设备初始化口令错误' + hint

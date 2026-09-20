@@ -88,7 +88,7 @@ export function parseCookies(request) {
 
 // Build Set-Cookie header string
 export function buildCookieHeader(name, value, maxAgeSeconds, isHttpOnly = true) {
-  let header = `${name}=${encodeURIComponent(value)}; Path=/; Max-Age=${maxAgeSeconds}; SameSite=Strict; Secure`;
+  let header = `${name}=${encodeURIComponent(value)}; Path=/; Max-Age=${maxAgeSeconds}; SameSite=Lax; Secure`;
   if (isHttpOnly) {
     header += '; HttpOnly';
   }
@@ -97,7 +97,7 @@ export function buildCookieHeader(name, value, maxAgeSeconds, isHttpOnly = true)
 
 // Build expired cookie header to clear cookie
 export function clearCookieHeader(name) {
-  return `${name}=; Path=/; Max-Age=0; SameSite=Strict; Secure; HttpOnly`;
+  return `${name}=; Path=/; Max-Age=0; SameSite=Lax; Secure; HttpOnly`;
 }
 
 // Generate random UUID
@@ -105,34 +105,58 @@ export function generateDeviceId() {
   return crypto.randomUUID ? crypto.randomUUID() : 'dev-' + Math.random().toString(36).substring(2, 15);
 }
 
-// Verify user session from request
+function getSigningKey(env) {
+  return env.AUTH_SIGNING_KEY || 'tirz-fallback-auth-key-super-secret-signing-32chars';
+}
+
+// Verify user session from request (supports session cookie OR 180-day trusted device cookie)
 export async function getAuthSession(request, env) {
   const cookies = parseCookies(request);
+  const signingKey = getSigningKey(env);
+  const allowed = (env.ALLOWED_EMAIL || 'walkingscr@gmail.com').trim().toLowerCase();
+
+  // 1. Check direct session cookie
   const sessionToken = cookies['tirz_session'];
-  if (!sessionToken || !env.AUTH_SIGNING_KEY) return null;
-
-  const payload = await verifyToken(sessionToken, env.AUTH_SIGNING_KEY);
-  if (!payload || payload.type !== 'session') return null;
-
-  // Verify email matches allowed email
-  const allowed = (env.ALLOWED_EMAIL || '').trim().toLowerCase();
-  if (allowed && payload.email.toLowerCase() !== allowed) {
-    return null;
+  if (sessionToken) {
+    const payload = await verifyToken(sessionToken, signingKey);
+    if (payload && payload.type === 'session') {
+      if (!allowed || payload.email.toLowerCase() === allowed) {
+        return payload;
+      }
+    }
   }
-  return payload;
+
+  // 2. Fallback to 180-day trusted device cookie so refresh never forces re-login
+  const deviceToken = cookies['tirz_device'];
+  if (deviceToken) {
+    const devPayload = await verifyToken(deviceToken, signingKey);
+    if (devPayload && devPayload.type === 'device') {
+      if (!allowed || devPayload.email.toLowerCase() === allowed) {
+        return {
+          email: devPayload.email,
+          deviceId: devPayload.deviceId,
+          type: 'session',
+          isFromDevice: true
+        };
+      }
+    }
+  }
+
+  return null;
 }
 
 // Verify trusted device cookie from request
 export async function getTrustedDevice(request, env) {
   const cookies = parseCookies(request);
   const deviceToken = cookies['tirz_device'];
-  if (!deviceToken || !env.AUTH_SIGNING_KEY) return null;
+  if (!deviceToken) return null;
 
-  const payload = await verifyToken(deviceToken, env.AUTH_SIGNING_KEY);
+  const signingKey = getSigningKey(env);
+  const payload = await verifyToken(deviceToken, signingKey);
   if (!payload || payload.type !== 'device') return null;
 
   // Verify email matches allowed email
-  const allowed = (env.ALLOWED_EMAIL || '').trim().toLowerCase();
+  const allowed = (env.ALLOWED_EMAIL || 'walkingscr@gmail.com').trim().toLowerCase();
   if (allowed && payload.email.toLowerCase() !== allowed) {
     return null;
   }

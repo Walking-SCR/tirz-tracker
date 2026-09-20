@@ -6,7 +6,29 @@ export async function handleRecordRoutes(request, env, url, session) {
 
   // 1. GET /api/records
   if (path === '/api/records' && method === 'GET') {
-    const { records } = await getRecords(env);
+    let records = [];
+    try {
+      const res = await getRecords(env);
+      if (res && Array.isArray(res.records) && res.records.length > 0) {
+        records = res.records;
+      }
+    } catch (err) {
+      console.warn('GitHub getRecords error, trying fallback:', err);
+    }
+
+    // Fallback to static asset records if empty
+    if (!records || records.length === 0) {
+      if (env.ASSETS) {
+        try {
+          const assetRes = await env.ASSETS.fetch(new Request(new URL('/data/records.json', request.url)));
+          if (assetRes && assetRes.status === 200) {
+            const data = await assetRes.json();
+            records = Array.isArray(data) ? data : (data.weights || []);
+          }
+        } catch (e) {}
+      }
+    }
+
     return new Response(JSON.stringify(records), {
       headers: { 'Content-Type': 'application/json' }
     });
