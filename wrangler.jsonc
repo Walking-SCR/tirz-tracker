@@ -11,7 +11,7 @@
     "GITHUB_OWNER": "Walking-SCR",
     "GITHUB_DATA_REPO": "tirz-tracker-data",
     "GITHUB_BRANCH": "main",
-    "ALLOWED_EMAIL": "",
+    "ALLOWED_EMAIL": "walkingscr@gmail.com",
     "BOOTSTRAP_ENABLED": "true"
   }
 }

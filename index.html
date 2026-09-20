@@ -429,6 +429,8 @@
           </div>
         </div>
 
+        <div id="loginErrorMsg" class="hidden rounded-xl p-2.5 bg-red-500/10 border border-red-500/30 text-[11px] font-mono text-red-400 leading-relaxed"></div>
+
         <button id="btnSubmitLogin" class="w-full py-3 rounded-xl bg-gradient-to-r from-cyberNeon to-cyberCyan font-mono text-sm font-black text-black shadow-[0_0_20px_rgba(0,255,178,0.4)] active:scale-95 transition flex items-center justify-center gap-2">
           <span>安全进入监测站</span>
           <i class="ph-bold ph-arrow-right"></i>
@@ -474,9 +476,11 @@
         </div>
       </div>
 
+      <div id="setupErrorMsg" class="hidden rounded-xl p-2.5 bg-red-500/10 border border-red-500/30 text-[11px] font-mono text-red-400 leading-relaxed"></div>
+
       <div class="pt-2">
-        <button id="btnSubmitSetup" class="w-full py-2.5 rounded-xl bg-gradient-to-r from-cyberCyan to-cyberNeon font-mono text-xs font-bold text-black shadow-[0_0_15px_rgba(0,240,255,0.3)] active:scale-95 transition">
-          确认绑定当前手机
+        <button id="btnSubmitSetup" class="w-full py-2.5 rounded-xl bg-gradient-to-r from-cyberCyan to-cyberNeon font-mono text-xs font-bold text-black shadow-[0_0_15px_rgba(0,240,255,0.3)] active:scale-95 transition flex items-center justify-center gap-2">
+          <span>确认绑定当前手机</span>
         </button>
       </div>
     </div>
@@ -834,15 +838,28 @@
     ];
 
     // Helper functions
-    function showToast(msg) {
-      const toast = document.getElementById('toast');
-      const toastMsg = document.getElementById('toastMsg');
-      if (!toast || !toastMsg) return;
-      toastMsg.textContent = msg;
-      toast.classList.remove('hidden');
-      setTimeout(() => {
-        toast.classList.add('hidden');
-      }, 3500);
+    function showToast(msg, isError = false) {
+      const toast = document.getElementById('cyberToast') || document.getElementById('toast');
+      const text = document.getElementById('toastText') || document.getElementById('toastMsg');
+      const icon = document.getElementById('toastIcon');
+      if (text) text.textContent = msg;
+      if (toast) {
+        toast.classList.remove('hidden', 'opacity-0', 'translate-y-[-20px]');
+        toast.classList.add('opacity-100', 'translate-y-0');
+        if (isError) {
+          toast.classList.add('border-cyberPink/60');
+          if (icon) icon.className = 'ph-fill ph-warning-circle text-cyberPink';
+        } else {
+          toast.classList.remove('border-cyberPink/60');
+          if (icon) icon.className = 'ph-fill ph-check-circle text-cyberNeon';
+        }
+        setTimeout(() => {
+          toast.classList.remove('opacity-100', 'translate-y-0');
+          toast.classList.add('opacity-0', 'translate-y-[-20px]');
+        }, 3500);
+      } else {
+        alert(msg);
+      }
     }
 
     function showCyberConfirm(msg, onConfirm) {
@@ -1742,12 +1759,24 @@
 
       if (btnSubmitLogin && loginEmailInput) {
         btnSubmitLogin.addEventListener('click', async () => {
+          const loginErrorMsg = document.getElementById('loginErrorMsg');
+          if (loginErrorMsg) loginErrorMsg.classList.add('hidden');
+
           const email = loginEmailInput.value.trim();
           if (!email) {
-            showToast('请输入授权邮箱');
+            const err = '请输入授权邮箱';
+            showToast(err, true);
+            if (loginErrorMsg) {
+              loginErrorMsg.textContent = err;
+              loginErrorMsg.classList.remove('hidden');
+            }
             return;
           }
+
+          const originalText = btnSubmitLogin.innerHTML;
           btnSubmitLogin.disabled = true;
+          btnSubmitLogin.innerHTML = '<i class="ph-bold ph-spinner animate-spin"></i> <span>正在安全验证...</span>';
+
           try {
             await CloudStorageAdapter.login(email);
             showToast('安全验证通过，欢迎进入！');
@@ -1755,28 +1784,50 @@
             updateSessionStatusUI(CloudStorageAdapter.sessionState);
             await syncWithCloud(true);
           } catch (err) {
+            const errMsg = err.message || '登录失败';
             if (err.code === 'DEVICE_NOT_BOUND') {
-              showToast('该设备尚未绑定，请点击下方完成设备绑定');
+              showToast('该设备尚未绑定，请点击下方完成设备绑定', true);
               const alertMsg = document.getElementById('authAlertMsg');
               if (alertMsg) alertMsg.textContent = '此设备尚未绑定，请点击下方「初始化绑定设备」输入口令即可绑定。';
+              if (loginErrorMsg) {
+                loginErrorMsg.textContent = '当前手机尚未授权，请点击下方链接完成首次绑定。';
+                loginErrorMsg.classList.remove('hidden');
+              }
             } else {
-              showToast(err.message || '登录失败');
+              showToast(errMsg, true);
+              if (loginErrorMsg) {
+                loginErrorMsg.textContent = errMsg;
+                loginErrorMsg.classList.remove('hidden');
+              }
             }
           } finally {
             btnSubmitLogin.disabled = false;
+            btnSubmitLogin.innerHTML = originalText;
           }
         });
       }
 
       if (btnSubmitSetup && setupEmailInput && setupSecretInput) {
         btnSubmitSetup.addEventListener('click', async () => {
+          const setupErrorMsg = document.getElementById('setupErrorMsg');
+          if (setupErrorMsg) setupErrorMsg.classList.add('hidden');
+
           const email = setupEmailInput.value.trim();
           const secret = setupSecretInput.value.trim();
           if (!email || !secret) {
-            showToast('请完整填写邮箱与设备初始化密钥');
+            const err = '请完整填写邮箱与设备初始化密钥';
+            showToast(err, true);
+            if (setupErrorMsg) {
+              setupErrorMsg.textContent = err;
+              setupErrorMsg.classList.remove('hidden');
+            }
             return;
           }
+
+          const originalText = btnSubmitSetup.innerHTML;
           btnSubmitSetup.disabled = true;
+          btnSubmitSetup.innerHTML = '<i class="ph-bold ph-spinner animate-spin"></i> <span>正在安全验证并绑定设备...</span>';
+
           try {
             await CloudStorageAdapter.bootstrap(email, secret);
             showToast('设备绑定成功！已为您建立180天受信任连接');
@@ -1785,9 +1836,15 @@
             updateSessionStatusUI(CloudStorageAdapter.sessionState);
             await syncWithCloud(true);
           } catch (err) {
-            showToast(err.message || '设备绑定失败');
+            const errMsg = err.message || '设备绑定失败';
+            showToast(errMsg, true);
+            if (setupErrorMsg) {
+              setupErrorMsg.textContent = errMsg;
+              setupErrorMsg.classList.remove('hidden');
+            }
           } finally {
             btnSubmitSetup.disabled = false;
+            btnSubmitSetup.innerHTML = originalText;
           }
         });
       }

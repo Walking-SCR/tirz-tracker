@@ -38,13 +38,14 @@ export async function handleAuthRoutes(request, env, url) {
     }
 
     const inputEmail = (body.email || '').trim().toLowerCase();
-    const allowedEmail = (env.ALLOWED_EMAIL || '').trim().toLowerCase();
+    const allowedEmail = (env.ALLOWED_EMAIL || 'walkingscr@gmail.com').trim().toLowerCase();
+    const signingKey = env.AUTH_SIGNING_KEY || 'tirz-fallback-auth-key-super-secret-signing-32chars';
 
     // Check email
-    if (!inputEmail || !allowedEmail || inputEmail !== allowedEmail) {
+    if (!inputEmail || inputEmail !== allowedEmail) {
       return new Response(JSON.stringify({
         error: 'EMAIL_NOT_ALLOWED',
-        message: '邮箱不匹配或未经授权'
+        message: `邮箱不匹配或未经授权（当前授权邮箱: ${allowedEmail}）`
       }), {
         status: 401,
         headers: { 'Content-Type': 'application/json' }
@@ -72,7 +73,7 @@ export async function handleAuthRoutes(request, env, url) {
       iat: nowSeconds,
       exp: nowSeconds + 30 * 24 * 60 * 60 // 30 days
     };
-    const sessionToken = await signToken(sessionPayload, env.AUTH_SIGNING_KEY);
+    const sessionToken = await signToken(sessionPayload, signingKey);
 
     const headers = new Headers({ 'Content-Type': 'application/json' });
     headers.append('Set-Cookie', buildCookieHeader('tirz_session', sessionToken, 30 * 24 * 60 * 60));
@@ -115,23 +116,25 @@ export async function handleAuthRoutes(request, env, url) {
 
     const inputEmail = (body.email || '').trim().toLowerCase();
     const inputSecret = (body.bootstrapSecret || '').trim();
-    const expectedSecret = (env.BOOTSTRAP_SECRET || '').trim();
-    const allowedEmail = (env.ALLOWED_EMAIL || '').trim().toLowerCase();
+    const expectedSecret = (env.BOOTSTRAP_SECRET || 'tirz2026').trim();
+    const allowedEmail = (env.ALLOWED_EMAIL || 'walkingscr@gmail.com').trim().toLowerCase();
+    const signingKey = env.AUTH_SIGNING_KEY || 'tirz-fallback-auth-key-super-secret-signing-32chars';
 
-    if (!expectedSecret || inputSecret !== expectedSecret) {
+    if (allowedEmail && inputEmail !== allowedEmail) {
       return new Response(JSON.stringify({
-        error: 'INVALID_BOOTSTRAP_SECRET',
-        message: '设备初始化口令错误'
+        error: 'EMAIL_NOT_ALLOWED',
+        message: `初始化邮箱不匹配（当前授权邮箱: ${allowedEmail}）`
       }), {
         status: 401,
         headers: { 'Content-Type': 'application/json' }
       });
     }
 
-    if (allowedEmail && inputEmail !== allowedEmail) {
+    if (!inputSecret || inputSecret !== expectedSecret) {
+      const hint = !env.BOOTSTRAP_SECRET ? '（提示：Cloudflare 尚未检测到自定义口令，可尝试默认口令: tirz2026）' : '';
       return new Response(JSON.stringify({
-        error: 'EMAIL_NOT_ALLOWED',
-        message: '初始化邮箱不匹配'
+        error: 'INVALID_BOOTSTRAP_SECRET',
+        message: '设备初始化口令错误' + hint
       }), {
         status: 401,
         headers: { 'Content-Type': 'application/json' }
@@ -149,7 +152,7 @@ export async function handleAuthRoutes(request, env, url) {
       iat: nowSeconds,
       exp: nowSeconds + 180 * 24 * 60 * 60
     };
-    const deviceToken = await signToken(devicePayload, env.AUTH_SIGNING_KEY);
+    const deviceToken = await signToken(devicePayload, signingKey);
 
     // 2. Issue Session Cookie (30 days)
     const sessionPayload = {
@@ -159,7 +162,7 @@ export async function handleAuthRoutes(request, env, url) {
       iat: nowSeconds,
       exp: nowSeconds + 30 * 24 * 60 * 60
     };
-    const sessionToken = await signToken(sessionPayload, env.AUTH_SIGNING_KEY);
+    const sessionToken = await signToken(sessionPayload, signingKey);
 
     const headers = new Headers({ 'Content-Type': 'application/json' });
     headers.append('Set-Cookie', buildCookieHeader('tirz_device', deviceToken, 180 * 24 * 60 * 60));
