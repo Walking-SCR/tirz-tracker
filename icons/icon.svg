@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <radialGradient id="bgGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#141c2b" />
+      <stop offset="100%" stop-color="#070A0F" />
+    </radialGradient>
+    <linearGradient id="neonGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#00FFB2" />
+      <stop offset="50%" stop-color="#00F0FF" />
+      <stop offset="100%" stop-color="#9D4EDD" />
+    </linearGradient>
+    <filter id="neonBlur" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="12" result="blur" />
+      <feMerge>
+        <feMergeNode in="blur" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- App Icon Background Container -->
+  <rect x="16" y="16" width="480" height="480" rx="108" fill="url(#bgGlow)" stroke="#1E293B" stroke-width="6" />
+  
+  <!-- Outer Cyber Tech Ring -->
+  <circle cx="256" cy="256" r="180" fill="none" stroke="#1E293B" stroke-width="4" stroke-dasharray="14 10" />
+  <circle cx="256" cy="256" r="160" fill="none" stroke="url(#neonGrad)" stroke-width="6" stroke-linecap="round" stroke-dasharray="80 120 180 60" filter="url(#neonBlur)" />
+
+  <!-- Center Weight Scale / Bio HUD Glyphs -->
+  <!-- Target Hexagon or Central Display Frame -->
+  <rect x="156" y="180" width="200" height="100" rx="20" fill="#0A0E17" stroke="#00FFB2" stroke-width="3" filter="url(#neonBlur)" />
+  <text x="256" y="248" font-family="-apple-system, SF Mono, Menlo, monospace" font-size="44" font-weight="900" fill="#00FFB2" text-anchor="middle" letter-spacing="2">TIRZ</text>
+  <text x="256" y="270" font-family="-apple-system, sans-serif" font-size="12" font-weight="bold" fill="#00F0FF" text-anchor="middle" letter-spacing="4">BIOMETRIC</text>
+
+  <!-- Stylized DNA / Syringe / Health Cross Motif at bottom -->
+  <g transform="translate(256, 350)" filter="url(#neonBlur)">
+    <!-- Scale foot dots -->
+    <circle cx="-60" cy="0" r="8" fill="#9D4EDD" />
+    <circle cx="0" cy="15" r="10" fill="#00F0FF" />
+    <circle cx="60" cy="0" r="8" fill="#00FFB2" />
+    <path d="M -60 0 Q 0 25 60 0" fill="none" stroke="url(#neonGrad)" stroke-width="3" stroke-linecap="round" />
+  </g>
+</svg>

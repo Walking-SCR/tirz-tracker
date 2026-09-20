@@ -1,0 +1,16 @@
+{
+  "name": "tirz-tracker",
+  "version": "2.0.0",
+  "description": "Tirzepatide Biometric Telemetry Station with Zero-Trust Security Architecture",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy"
+  },
+  "keywords": ["tirzepatide", "glp1", "health", "tracker", "pwa", "cloudflare-worker"],
+  "author": "Walking-SCR",
+  "license": "MIT",
+  "devDependencies": {
+    "wrangler": "^3.109.2"
+  }
+}
