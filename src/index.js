@@ -3,6 +3,7 @@ import { handleAuthRoutes } from './api/authRoutes.js';
 import { handleRecordRoutes } from './api/recordRoutes.js';
 import { handleDoseRoutes } from './api/doseRoutes.js';
 import { handlePhotoRoutes } from './api/photoRoutes.js';
+import { getFallbackHtml } from './fallbackHtml.js';
 
 function addSecurityHeaders(response) {
   const newHeaders = new Headers(response.headers);
@@ -78,20 +79,44 @@ export default {
     // 4. Special alias: /setup opens the app with setup flag
     if (path === '/setup') {
       if (env.ASSETS) {
-        const assetUrl = new URL('/index.html', request.url);
-        assetUrl.searchParams.set('mode', 'setup');
-        return addSecurityHeaders(await env.ASSETS.fetch(new Request(assetUrl, request)));
+        try {
+          const assetUrl = new URL('/index.html', request.url);
+          assetUrl.searchParams.set('mode', 'setup');
+          const res = await env.ASSETS.fetch(new Request(assetUrl, request));
+          if (res.status === 200) return addSecurityHeaders(res);
+        } catch (e) {}
       }
+      return Response.redirect(`${url.origin}/?mode=setup`, 302);
     }
 
-    // 5. Static Assets fallback (Worker Static Assets via env.ASSETS)
+    // 5. Root & Static Assets fallback
+    if (path === '/' || path === '/index.html') {
+      if (env.ASSETS) {
+        try {
+          const res = await env.ASSETS.fetch(request);
+          if (res.status === 200) return addSecurityHeaders(res);
+        } catch (e) {}
+      }
+      return addSecurityHeaders(new Response(getFallbackHtml(), {
+        headers: { 'Content-Type': 'text/html; charset=utf-8' }
+      }));
+    }
+
     if (env.ASSETS) {
-      const assetRes = await env.ASSETS.fetch(request);
-      return addSecurityHeaders(assetRes);
+      try {
+        const assetRes = await env.ASSETS.fetch(request);
+        if (assetRes.status !== 404) return addSecurityHeaders(assetRes);
+      } catch (e) {}
     }
 
-    return new Response('Tirz Tracker Worker Ready (Static Assets not bound in local test)', {
-      headers: { 'Content-Type': 'text/plain; charset=utf-8' }
-    });
+    // For any remaining HTML navigation, return SPA fallback
+    const accept = request.headers.get('Accept') || '';
+    if (accept.includes('text/html')) {
+      return addSecurityHeaders(new Response(getFallbackHtml(), {
+        headers: { 'Content-Type': 'text/html; charset=utf-8' }
+      }));
+    }
+
+    return new Response('Not Found', { status: 404 });
   }
 };
