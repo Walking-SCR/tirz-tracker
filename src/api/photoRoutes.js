@@ -11,22 +11,36 @@ export async function handlePhotoRoutes(request, env, url, session) {
     const photoPath = `images/${yyyy}/${mm}/${filename}`;
 
     try {
-      const result = await fetchPrivatePhoto(env, photoPath);
-      if (!result) {
-        return new Response('Photo not found', { status: 404 });
-      }
-
-      return new Response(result.body, {
-        headers: {
-          'Content-Type': result.contentType || 'image/webp',
-          'Cache-Control': 'private, no-store, must-revalidate',
-          'X-Content-Type-Options': 'nosniff'
+      if (env.GITHUB_TOKEN) {
+        const result = await fetchPrivatePhoto(env, photoPath);
+        if (result) {
+          return new Response(result.body, {
+            headers: {
+              'Content-Type': result.contentType || 'image/webp',
+              'Cache-Control': 'private, no-store, must-revalidate',
+              'X-Content-Type-Options': 'nosniff'
+            }
+          });
         }
-      });
+      }
     } catch (err) {
-      console.error('Failed to proxy photo:', err);
-      return new Response('Photo fetch failed', { status: 500 });
+      console.warn('GitHub photo fetch failed, trying local assets fallback:', err);
     }
+
+    // Fallback to static assets if available
+    if (env.ASSETS) {
+      try {
+        const assetUrl = new URL(`/${photoPath}`, request.url);
+        const assetRes = await env.ASSETS.fetch(new Request(assetUrl, request));
+        if (assetRes && assetRes.status < 400) {
+          return assetRes;
+        }
+      } catch (assetErr) {
+        console.warn('Asset fetch error:', assetErr);
+      }
+    }
+
+    return new Response('Photo not found', { status: 404 });
   }
 
   return null;

@@ -147,17 +147,34 @@ export async function saveRecords(env, records, message = 'Update biometric reco
 // Get dose records array
 export async function getDoses(env) {
   const file = await getFile(env, 'data/doses.json');
-  if (!file || !file.content) return { doses: [], sha: null };
-
-  try {
-    const jsonStr = base64ToUtf8(file.content);
-    const parsed = JSON.parse(jsonStr);
-    const doses = Array.isArray(parsed) ? parsed : (parsed.doses || []);
-    return { doses, sha: file.sha };
-  } catch (err) {
-    console.error('Failed to parse doses.json', err);
-    return { doses: [], sha: file.sha };
+  if (file && file.content) {
+    try {
+      const jsonStr = base64ToUtf8(file.content);
+      const parsed = JSON.parse(jsonStr);
+      const doses = Array.isArray(parsed) ? parsed : (parsed.doses || []);
+      if (doses.length > 0) {
+        return { doses, sha: file.sha };
+      }
+    } catch (err) {
+      console.error('Failed to parse doses.json', err);
+    }
   }
+
+  // Fallback to records.json doses
+  try {
+    const recFile = await getFile(env, 'data/records.json');
+    if (recFile && recFile.content) {
+      const jsonStr = base64ToUtf8(recFile.content);
+      const parsed = JSON.parse(jsonStr);
+      if (parsed && Array.isArray(parsed.doses) && parsed.doses.length > 0) {
+        return { doses: parsed.doses, sha: recFile.sha };
+      }
+    }
+  } catch (err) {
+    console.error('Failed to parse fallback doses from records.json', err);
+  }
+
+  return { doses: [], sha: file ? file.sha : null };
 }
 
 // Save dose records array

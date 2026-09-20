@@ -1,5 +1,5 @@
 // Service Worker for Tirzepatide Tracker V2 PWA (Static-Only Cache)
-const CACHE_NAME = 'tirz-tracker-v2';
+const CACHE_NAME = 'tirz-tracker-v2.1';
 const STATIC_ASSETS = [
   './',
   './index.html',

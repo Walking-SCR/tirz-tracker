@@ -46,6 +46,20 @@ export default {
     if (path.startsWith('/api/')) {
       const session = await getAuthSession(request, env);
       if (!session) {
+        // Allow public baseline scale photos from static assets even before device binding
+        if (path.startsWith('/api/photos/') && env.ASSETS) {
+          const photoMatch = path.match(/^\/api\/photos\/(?:images\/)?(\d{4})\/(\d{2})\/([a-zA-Z0-9_.-]+)$/);
+          if (photoMatch) {
+            const [, yyyy, mm, filename] = photoMatch;
+            try {
+              const assetRes = await env.ASSETS.fetch(new Request(new URL(`/images/${yyyy}/${mm}/${filename}`, request.url)));
+              if (assetRes && assetRes.status < 400) {
+                return addSecurityHeaders(assetRes);
+              }
+            } catch (e) {}
+          }
+        }
+
         return addSecurityHeaders(new Response(JSON.stringify({
           error: 'AUTH_REQUIRED',
           message: '需要登录认证或会话已过期'

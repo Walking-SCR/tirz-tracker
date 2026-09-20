@@ -789,51 +789,115 @@
       }
     ];
 
-    // Default Seed Weights strictly starting from 09.12 first dose (174.7 斤)
+    // Default Baseline Weights from PDF records
     const defaultWeights = [
       {
-        id: 'wt-0',
+        id: 'wt-1789225800000',
         date: '2026-09-12',
         time: '23:10',
         weight: 174.7,
         unit: '斤',
         condition: '第一针打针时',
         remark: '替尔泊肽起始基准体重 (第1针 2.5ml)',
-        photo: createScalePreviewSVG('174.7', '09.12', '23:10'),
-        timestamp: new Date('2026-09-12T23:10:00').getTime()
+        photo: 'images/2026/09/wt-1789225800000.png',
+        photoPath: 'images/2026/09/wt-1789225800000.png',
+        timestamp: 1789225800000
       },
       {
-        id: 'wt-1',
+        id: 'wt-1789344900000',
         date: '2026-09-14',
         time: '08:15',
         weight: 171.5,
         unit: '斤',
         condition: '早上空腹',
         remark: '首周吸收期 · 较首针已下潜 -3.2斤',
-        photo: createScalePreviewSVG('171.5', '09.14', '08:15'),
-        timestamp: new Date('2026-09-14T08:15:00').getTime()
+        photo: 'images/2026/09/wt-1789344900000.png',
+        photoPath: 'images/2026/09/wt-1789344900000.png',
+        timestamp: 1789344900000
       },
       {
-        id: 'wt-2',
+        id: 'wt-1789431600000',
+        date: '2026-09-15',
+        time: '08:20',
+        weight: 171.0,
+        unit: '斤',
+        condition: '早上空腹',
+        remark: '饱腹感持续，平稳下降',
+        photo: 'images/2026/09/wt-1789431600000.png',
+        photoPath: 'images/2026/09/wt-1789431600000.png',
+        timestamp: 1789431600000
+      },
+      {
+        id: 'wt-1789522800000',
+        date: '2026-09-16',
+        time: '09:40',
+        weight: 169.9,
+        unit: '斤',
+        condition: '上午空腹',
+        remark: '首次跌破170斤大关！达成第1个里程碑',
+        photo: 'images/2026/09/wt-1789522800000.png',
+        photoPath: 'images/2026/09/wt-1789522800000.png',
+        timestamp: 1789522800000
+      },
+      {
+        id: 'wt-1789608600000',
+        date: '2026-09-17',
+        time: '09:30',
+        weight: 168.5,
+        unit: '斤',
+        condition: '上午空腹',
+        remark: '持续平稳下降，体能精力正常',
+        photo: 'images/2026/09/wt-1789608600000.png',
+        photoPath: 'images/2026/09/wt-1789608600000.png',
+        timestamp: 1789608600000
+      },
+      {
+        id: 'wt-1789694100000',
+        date: '2026-09-18',
+        time: '09:15',
+        weight: 167.9,
+        unit: '斤',
+        condition: '上午空腹',
+        remark: '体重进入平台低位微波动',
+        photo: 'images/2026/09/wt-1789694100000.png',
+        photoPath: 'images/2026/09/wt-1789694100000.png',
+        timestamp: 1789694100000
+      },
+      {
+        id: 'wt-1789780200000',
         date: '2026-09-19',
-        time: '23:57',
+        time: '09:10',
+        weight: 167.8,
+        unit: '斤',
+        condition: '上午空腹',
+        remark: '首周期空腹历史最低点（破峰纪录）',
+        photo: 'images/2026/09/wt-1789780200000.png',
+        photoPath: 'images/2026/09/wt-1789780200000.png',
+        timestamp: 1789780200000
+      },
+      {
+        id: 'wt-1789824600000',
+        date: '2026-09-19',
+        time: '21:30',
         weight: 170.3,
         unit: '斤',
-        condition: '第二针打针时',
-        remark: '第1周累计减重 -4.4斤 · 开启第2针',
-        photo: createScalePreviewSVG('170.3', '09.19', '23:57'),
-        timestamp: new Date('2026-09-19T23:57:00').getTime()
+        condition: '晚上吃饱水果',
+        remark: '晚餐进食较多水果与水分，第2针给药前测重',
+        photo: 'images/2026/09/wt-1789824600000.png',
+        photoPath: 'images/2026/09/wt-1789824600000.png',
+        timestamp: 1789824600000
       },
       {
-        id: 'wt-3',
+        id: 'wt-1789866900000',
         date: '2026-09-20',
-        time: '19:40',
-        weight: 169.8,
+        time: '09:15',
+        weight: 169.6,
         unit: '斤',
-        condition: '吃饱后晚称',
-        remark: '第二针次日 · 吃饱晚称成功击穿 170 大关！',
-        photo: createScalePreviewSVG('169.8', '09.20', '19:40'),
-        timestamp: new Date('2026-09-20T19:40:00').getTime()
+        condition: '上午空腹',
+        remark: '第2针次日 · 迅速排空回落至 169.6斤',
+        photo: 'images/2026/09/wt-1789866900000.png',
+        photoPath: 'images/2026/09/wt-1789866900000.png',
+        timestamp: 1789866900000
       }
     ];
 
@@ -1058,7 +1122,7 @@
             <div class="flex items-center space-x-3">
               <div class="relative w-14 h-16 rounded-xl overflow-hidden bg-black/80 border border-cyberNeon/30 flex-shrink-0 cursor-pointer group/thumb hover:scale-105 transition" data-view-img="${item.id}">
                 ${photoUrl ? `
-                  <img src="${photoUrl}" class="w-full h-full object-cover">
+                  <img src="${photoUrl}" onerror="if(!this.dataset.retried){this.dataset.retried='1';this.src='/${item.photoPath||item.photo}';}" class="w-full h-full object-cover">
                   <div class="absolute inset-0 bg-black/30 flex items-center justify-center opacity-0 group-hover/thumb:opacity-100 transition">
                     <i class="ph-bold ph-magnifying-glass text-white text-xs"></i>
                   </div>
@@ -1319,9 +1383,16 @@
       const titleEl = document.getElementById('photoViewerTitle');
       if (!modal || !img) return;
 
+      img.onerror = function() {
+        if (!this.dataset.retried && photoStr) {
+          this.dataset.retried = '1';
+          this.src = photoStr.startsWith('/') ? photoStr : `/${photoStr}`;
+        }
+      };
+      img.dataset.retried = '';
       const resolved = CloudStorageAdapter.resolvePhotoUrl(photoStr);
       img.src = resolved;
-      if (titleEl) titleEl.textContent = title;
+      if (titleEl) titleEl.textContent = title || '真实体重秤拍照留存';
       modal.classList.remove('hidden');
     };
 
