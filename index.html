@@ -751,141 +751,9 @@
     let targetRecordForPhotoUpdate = null;
     let pendingConfirmAction = null;
 
-    // Default Seed Doses from PDF records
-    const defaultDoses = [
-      {
-        id: 'dose-1',
-        seq: '第一针',
-        amount: '2.5ml',
-        date: '2026-09-12',
-        time: '23:10',
-        weight: 174.7,
-        site: '腹部左侧',
-        timestamp: 1789225800000
-      },
-      {
-        id: 'dose-2',
-        seq: '第二针',
-        amount: '2.5ml',
-        date: '2026-09-19',
-        time: '23:57',
-        weight: 170.3,
-        site: '腹部右侧',
-        timestamp: 1789833420000
-      }
-    ];
-
-    // Default Baseline Weights from PDF records with real extracted scale photos
-    const defaultWeights = [
-      {
-        id: 'wt-1789225800000',
-        date: '2026-09-12',
-        time: '23:10',
-        weight: 174.7,
-        unit: '斤',
-        condition: '第一针打针时',
-        remark: '替尔泊肽起始基准体重 (第1针 2.5ml)',
-        photo: 'images/2026/09/wt-1789225800000.png',
-        photoPath: 'images/2026/09/wt-1789225800000.png',
-        timestamp: 1789225800000
-      },
-      {
-        id: 'wt-1789344900000',
-        date: '2026-09-14',
-        time: '08:15',
-        weight: 171.5,
-        unit: '斤',
-        condition: '早上空腹',
-        remark: '首周吸收期 · 较首针已下潜 -3.2斤',
-        photo: 'images/2026/09/wt-1789344900000.png',
-        photoPath: 'images/2026/09/wt-1789344900000.png',
-        timestamp: 1789344900000
-      },
-      {
-        id: 'wt-1789431600000',
-        date: '2026-09-15',
-        time: '08:20',
-        weight: 171.0,
-        unit: '斤',
-        condition: '早上空腹',
-        remark: '饱腹感持续，平稳下降',
-        photo: 'images/2026/09/wt-1789431600000.png',
-        photoPath: 'images/2026/09/wt-1789431600000.png',
-        timestamp: 1789431600000
-      },
-      {
-        id: 'wt-1789522800000',
-        date: '2026-09-16',
-        time: '09:40',
-        weight: 169.9,
-        unit: '斤',
-        condition: '上午空腹',
-        remark: '首次跌破170斤大关！达成第1个里程碑',
-        photo: 'images/2026/09/wt-1789522800000.png',
-        photoPath: 'images/2026/09/wt-1789522800000.png',
-        timestamp: 1789522800000
-      },
-      {
-        id: 'wt-1789608600000',
-        date: '2026-09-17',
-        time: '09:30',
-        weight: 168.5,
-        unit: '斤',
-        condition: '上午空腹',
-        remark: '持续平稳下降，体能精力正常',
-        photo: 'images/2026/09/wt-1789608600000.png',
-        photoPath: 'images/2026/09/wt-1789608600000.png',
-        timestamp: 1789608600000
-      },
-      {
-        id: 'wt-1789694100000',
-        date: '2026-09-18',
-        time: '09:15',
-        weight: 167.9,
-        unit: '斤',
-        condition: '上午空腹',
-        remark: '体重进入平台低位微波动',
-        photo: 'images/2026/09/wt-1789694100000.png',
-        photoPath: 'images/2026/09/wt-1789694100000.png',
-        timestamp: 1789694100000
-      },
-      {
-        id: 'wt-1789780200000',
-        date: '2026-09-19',
-        time: '09:10',
-        weight: 167.8,
-        unit: '斤',
-        condition: '上午空腹',
-        remark: '首周期空腹历史最低点（破峰纪录）',
-        photo: 'images/2026/09/wt-1789780200000.png',
-        photoPath: 'images/2026/09/wt-1789780200000.png',
-        timestamp: 1789780200000
-      },
-      {
-        id: 'wt-1789824600000',
-        date: '2026-09-19',
-        time: '21:30',
-        weight: 170.3,
-        unit: '斤',
-        condition: '晚上吃饱水果',
-        remark: '晚餐进食较多水果与水分，第2针给药前测重',
-        photo: 'images/2026/09/wt-1789824600000.png',
-        photoPath: 'images/2026/09/wt-1789824600000.png',
-        timestamp: 1789824600000
-      },
-      {
-        id: 'wt-1789866900000',
-        date: '2026-09-20',
-        time: '09:15',
-        weight: 169.6,
-        unit: '斤',
-        condition: '上午空腹',
-        remark: '第2针次日 · 迅速排空回落至 169.6斤',
-        photo: 'images/2026/09/wt-1789866900000.png',
-        photoPath: 'images/2026/09/wt-1789866900000.png',
-        timestamp: 1789866900000
-      }
-    ];
+    // All biometric telemetry data and photos are stored exclusively in the private tirz-tracker-data repo
+    const defaultDoses = [];
+    const defaultWeights = [];
 
     // Helper functions
     function showToast(msg, isError = false) {
@@ -1025,34 +893,38 @@
         const savedDoses = localStorage.getItem(STORAGE_KEY_DOSES);
 
         if (savedWeights) {
-          const parsed = JSON.parse(savedWeights);
-          if (Array.isArray(parsed) && parsed.length >= defaultWeights.length && !JSON.stringify(parsed).includes('wt-0')) {
-            weightRecords = parsed;
-          } else {
-            weightRecords = defaultWeights;
-            saveWeightsToStorage();
+          try {
+            const parsed = JSON.parse(savedWeights);
+            if (Array.isArray(parsed) && !JSON.stringify(parsed).includes('wt-0')) {
+              weightRecords = parsed;
+            } else {
+              weightRecords = [];
+            }
+          } catch (e) {
+            weightRecords = [];
           }
         } else {
-          weightRecords = defaultWeights;
-          saveWeightsToStorage();
+          weightRecords = [];
         }
 
         if (savedDoses) {
-          const parsed = JSON.parse(savedDoses);
-          if (Array.isArray(parsed) && parsed.length >= defaultDoses.length) {
-            doseRecords = parsed;
-          } else {
-            doseRecords = defaultDoses;
-            saveDosesToStorage();
+          try {
+            const parsed = JSON.parse(savedDoses);
+            if (Array.isArray(parsed)) {
+              doseRecords = parsed;
+            } else {
+              doseRecords = [];
+            }
+          } catch (e) {
+            doseRecords = [];
           }
         } else {
-          doseRecords = defaultDoses;
-          saveDosesToStorage();
+          doseRecords = [];
         }
       } catch (err) {
         console.warn('Storage load fallback', err);
-        weightRecords = defaultWeights;
-        doseRecords = defaultDoses;
+        weightRecords = [];
+        doseRecords = [];
       }
 
       refreshAllUI();
@@ -1111,6 +983,18 @@
       
       if (countBadge) {
         countBadge.textContent = `共 ${sortedWeights.length} 条记录`;
+      }
+
+      if (sortedWeights.length === 0) {
+        if (countBadge) countBadge.textContent = '共 0 条记录';
+        container.innerHTML = `
+          <div class="glass-hud rounded-2xl p-6 border border-white/5 text-center text-xs font-mono text-neutral-400 space-y-2">
+            <i class="ph-bold ph-cloud-arrow-down text-3xl text-cyberCyan/40"></i>
+            <p>暂无本地测重数据</p>
+            <p class="text-[11px] text-neutral-500">点击右上角刷新同步私有仓库数据，或拍照录入</p>
+          </div>
+        `;
+        return;
       }
 
       sortedWeights.forEach((item) => {
@@ -1226,7 +1110,32 @@
     }
 
     function calculateStats() {
-      if (weightRecords.length === 0) return;
+      const statTotalDrop = document.getElementById('statTotalDrop') || document.getElementById('statTotalLoss');
+      const statTotalSub = document.getElementById('statTotalSub') || document.getElementById('statBaseline');
+      const statLowestWeight = document.getElementById('statLowestWeight');
+      const statLowestDate = document.getElementById('statLowestDate');
+      const statCurrentWeight = document.getElementById('statCurrentWeight') || document.getElementById('statLatestWeight');
+      const statCurrentCondition = document.getElementById('statCurrentCondition');
+      const quickStartPoint = document.getElementById('quickStartPoint');
+      const quickMaxDrop = document.getElementById('quickMaxDrop');
+      const quickDailyDrop = document.getElementById('quickDailyDrop');
+
+      if (weightRecords.length === 0) {
+        if (statCurrentWeight) statCurrentWeight.textContent = '-- 斤';
+        if (statCurrentCondition) statCurrentCondition.textContent = '待同步';
+        if (statTotalDrop) {
+          statTotalDrop.textContent = '-- 斤';
+          statTotalDrop.className = 'text-lg font-mono font-black text-neutral-400 mt-1';
+        }
+        if (statTotalSub) statTotalSub.textContent = '基准: -- 斤';
+        if (statLowestWeight) statLowestWeight.textContent = '-- 斤';
+        if (statLowestDate) statLowestDate.textContent = '-- 破峰';
+        if (quickStartPoint) quickStartPoint.textContent = '--';
+        if (quickMaxDrop) quickMaxDrop.textContent = '--';
+        if (quickDailyDrop) quickDailyDrop.textContent = '--';
+        return;
+      }
+
       const sorted = [...weightRecords].sort((a, b) => a.timestamp - b.timestamp);
       const baseline = sorted[0].weight;
       const latestRec = sorted[sorted.length - 1];
@@ -1237,13 +1146,6 @@
       const fastingRecords = sorted.filter(r => (r.condition || '').includes('空腹'));
       const pool = fastingRecords.length > 0 ? fastingRecords : sorted;
       const lowestRec = pool.reduce((min, cur) => cur.weight < min.weight ? cur : min, pool[0]);
-
-      const statTotalDrop = document.getElementById('statTotalDrop') || document.getElementById('statTotalLoss');
-      const statTotalSub = document.getElementById('statTotalSub') || document.getElementById('statBaseline');
-      const statLowestWeight = document.getElementById('statLowestWeight');
-      const statLowestDate = document.getElementById('statLowestDate');
-      const statCurrentWeight = document.getElementById('statCurrentWeight') || document.getElementById('statLatestWeight');
-      const statCurrentCondition = document.getElementById('statCurrentCondition');
 
       if (statCurrentWeight) statCurrentWeight.textContent = `${latest.toFixed(1)} 斤`;
       if (statCurrentCondition) statCurrentCondition.textContent = latestRec.condition || '常规测重';
@@ -1261,10 +1163,6 @@
       }
 
       // Quick analysis bar below chart
-      const quickStartPoint = document.getElementById('quickStartPoint');
-      const quickMaxDrop = document.getElementById('quickMaxDrop');
-      const quickDailyDrop = document.getElementById('quickDailyDrop');
-
       if (quickStartPoint) {
         const firstD = sorted[0].date ? sorted[0].date.slice(5) : '';
         quickStartPoint.textContent = `${firstD} (${baseline.toFixed(1)}斤)`;
@@ -1314,7 +1212,13 @@
       if (!canvas) return;
 
       const sorted = [...weightRecords].sort((a, b) => a.timestamp - b.timestamp);
-      if (sorted.length === 0) return;
+      if (sorted.length === 0) {
+        if (chartInstance) {
+          chartInstance.destroy();
+          chartInstance = null;
+        }
+        return;
+      }
 
       const labels = sorted.map(r => `${r.date ? r.date.slice(5) : ''} ${r.time ? r.time.slice(0, 5) : ''}`);
       const dataPoints = sorted.map(r => r.weight);
