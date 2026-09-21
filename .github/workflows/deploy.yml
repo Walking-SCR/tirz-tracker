@@ -10,18 +10,17 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     name: Deploy
+    permissions:
+      contents: read
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Deploy to Cloudflare Workers
-        uses: cloudflare/wrangler-action@v3
+        uses: cloudflare/wrangler-action@v4
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          secrets: |
-            GITHUB_TOKEN
-            GEMINI_API_KEY
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          # Keep this aligned with package-lock.json. Wrangler >= 3.91 is
+          # required because the project uses wrangler.jsonc.
+          wranglerVersion: "3.114.17"

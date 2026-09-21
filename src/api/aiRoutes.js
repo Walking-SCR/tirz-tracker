@@ -14,6 +14,10 @@ function extractJson(text) {
   if (firstBrace !== -1 && lastBrace > firstBrace) {
     try { return JSON.parse(text.substring(firstBrace, lastBrace + 1)); } catch {}
   }
+  const numMatch = text.match(/(\d{2,3}(?:\.\d{1,2})?)/);
+  if (numMatch) {
+    return { weight: parseFloat(numMatch[1]), unit: '斤' };
+  }
   return null;
 }
 
@@ -40,7 +44,9 @@ export async function handleAIRoutes(request, env, url, session) {
       });
     }
 
-    const BUILTIN_GEMINI_KEY = typeof atob === 'function' ? atob('QVEuQWI4Uk42SVBGdnlVcEJ6dGw0cHR2dUFrZTZXMkxhUzFjYjh3VXRvcnYwRjRZZjVWX2c=') : '';
+    const BUILTIN_GEMINI_KEY = typeof atob === 'function'
+      ? atob('QVEuQWI4Uk42SVBGdnlVcEJ6dGw0cHR2dUFrZTZXMkxhUzFjYjh3VXRvcnYwRjRZZjVWX2c=')
+      : (typeof Buffer !== 'undefined' ? Buffer.from('QVEuQWI4Uk42SVBGdnlVcEJ6dGw0cHR2dUFrZTZXMkxhUzFjYjh3VXRvcnYwRjRZZjVWX2c=', 'base64').toString() : '');
     const apiKey = (body.apiKey && typeof body.apiKey === 'string' && body.apiKey.trim()) ||
                    (env.GEMINI_API_KEY && env.GEMINI_API_KEY.trim()) ||
                    BUILTIN_GEMINI_KEY;
@@ -75,75 +81,77 @@ export async function handleAIRoutes(request, env, url, session) {
       'gemini-flash-lite-latest',
       'gemini-3.1-flash-lite'
     ];
+    const keysToTry = [apiKey];
+    if (BUILTIN_GEMINI_KEY && apiKey !== BUILTIN_GEMINI_KEY) {
+      keysToTry.push(BUILTIN_GEMINI_KEY);
+    }
 
     let lastError = null;
-    for (const model of modelsToTry) {
-      try {
-        const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 6000);
-        const res = await fetch(apiUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          signal: controller.signal,
-          body: JSON.stringify({
-            contents: [{
-              role: 'user',
-              parts: [
-                { text: prompt },
-                { inlineData: { mimeType: mimeType, data: pureBase64 } }
-              ]
-            }],
-            generationConfig: {
-              responseMimeType: 'application/json'
-            }
-          })
-        });
-        clearTimeout(timeoutId);
-
-        if (!res.ok) {
-          const errText = await res.text().catch(() => '');
-          lastError = new Error(`Gemini ${model} HTTP ${res.status}: ${errText}`);
-          // If 400 Bad Request or 403 Forbidden, retrying other models won't help; stop immediately to save quota
-          if (res.status === 400 || res.status === 403) {
-            break;
-          }
-          continue;
-        }
-
-        const data = await res.json();
-        const textResponse = data.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (!textResponse) {
-          lastError = new Error(`Gemini ${model} 返回内容为空`);
-          continue;
-        }
-
-        const parsed = extractJson(textResponse);
-        if (!parsed) {
-          lastError = new Error(`Gemini ${model} 返回非标准 JSON: ${textResponse.slice(0, 100)}`);
-          continue;
-        }
-
-        let wt = parsed.weight;
-        if (typeof wt === 'string') {
-          wt = parseFloat(wt.replace(/[^0-9.]/g, ''));
-        } else {
-          wt = Number(wt);
-        }
-
-        if (!isNaN(wt) && wt > 0) {
-          return new Response(JSON.stringify({
-            success: true,
-            weight: wt,
-            unit: parsed.unit || '斤',
-            confidence: parsed.confidence || 'high',
-            model: model
-          }), {
-            headers: { 'Content-Type': 'application/json' }
+    for (const activeKey of keysToTry) {
+      for (const model of modelsToTry) {
+        try {
+          const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${activeKey}`;
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 8000);
+          const res = await fetch(apiUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            signal: controller.signal,
+            body: JSON.stringify({
+              contents: [{
+                role: 'user',
+                parts: [
+                  { text: prompt },
+                  { inlineData: { mimeType: mimeType, data: pureBase64 } }
+                ]
+              }],
+              generationConfig: {
+                responseMimeType: 'application/json'
+              }
+            })
           });
+          clearTimeout(timeoutId);
+
+          if (!res.ok) {
+            const errText = await res.text().catch(() => '');
+            lastError = new Error(`Gemini ${model} HTTP ${res.status}: ${errText}`);
+            continue;
+          }
+
+          const data = await res.json();
+          const textResponse = data.candidates?.[0]?.content?.parts?.[0]?.text;
+          if (!textResponse) {
+            lastError = new Error(`Gemini ${model} 返回内容为空`);
+            continue;
+          }
+
+          const parsed = extractJson(textResponse);
+          if (!parsed) {
+            lastError = new Error(`Gemini ${model} 返回非标准 JSON: ${textResponse.slice(0, 100)}`);
+            continue;
+          }
+
+          let wt = parsed.weight;
+          if (typeof wt === 'string') {
+            wt = parseFloat(wt.replace(/[^0-9.]/g, ''));
+          } else {
+            wt = Number(wt);
+          }
+
+          if (!isNaN(wt) && wt > 0) {
+            return new Response(JSON.stringify({
+              success: true,
+              weight: wt,
+              unit: parsed.unit || '斤',
+              confidence: parsed.confidence || 'high',
+              model: model
+            }), {
+              headers: { 'Content-Type': 'application/json' }
+            });
+          }
+        } catch (err) {
+          lastError = err;
         }
-      } catch (err) {
-        lastError = err;
       }
     }
 

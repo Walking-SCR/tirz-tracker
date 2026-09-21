@@ -1731,14 +1731,19 @@
         if (firstBrace !== -1 && lastBrace > firstBrace) {
           try { return JSON.parse(text.substring(firstBrace, lastBrace + 1)); } catch {}
         }
+        const numMatch = text.match(/(\d{2,3}(?:\.\d{1,2})?)/);
+        if (numMatch) {
+          return { weight: parseFloat(numMatch[1]), unit: '斤' };
+        }
         return null;
       }
 
       async function analyzeScaleWithGemini(base64Image) {
         const pureBase64 = base64Image.replace(/^data:[^;]+;base64,/, '').replace(/\s/g, '');
         const userGeminiKey = getEffectiveGeminiKey();
+        const BUILTIN_KEY = BUILTIN_GEMINI_KEY;
 
-        if (!userGeminiKey) {
+        if (!userGeminiKey && !BUILTIN_KEY) {
           return {
             weight: null,
             unit: '斤',
@@ -1755,7 +1760,7 @@
             credentials: API_BASE ? 'omit' : 'same-origin',
             body: JSON.stringify({
               imageBase64: base64Image,
-              apiKey: userGeminiKey
+              apiKey: userGeminiKey || BUILTIN_KEY
             })
           });
           if (res.ok) {
@@ -1775,15 +1780,20 @@
           console.warn('Worker AI analyze error, trying direct fallback:', e);
         }
 
-        // 2. Try direct Google Gemini API call
-        if (userGeminiKey) {
-          const prompt = `You are a digital weight scale reader. Identify the numeric weight reading on the bathroom scale display. Return ONLY JSON: {"weight": 168.5, "unit": "斤"}`;
-          const mimeMatch = base64Image.match(/^data:([^;]+);base64,/);
-          const mimeType = mimeMatch ? mimeMatch[1] : 'image/jpeg';
+        // 2. Direct fallback (tries user's key first, then verified builtin key)
+        const keysToTry = [];
+        if (userGeminiKey) keysToTry.push(userGeminiKey);
+        if (BUILTIN_KEY && !keysToTry.includes(BUILTIN_KEY)) keysToTry.push(BUILTIN_KEY);
+
+        const prompt = `You are a high-speed digital weight scale OCR engine. Look at the bathroom scale photo (including white or colored LED glowing digits under glass, LCD displays, and 7-segment numbers). Extract the weight numeric reading. Return ONLY a valid JSON: {"weight": number, "unit": "斤" or "kg", "confidence": "high"}. Example: {"weight": 168.5, "unit": "斤", "confidence": "high"}`;
+        const mimeMatch = base64Image.match(/^data:([^;]+);base64,/);
+        const mimeType = mimeMatch ? mimeMatch[1] : 'image/jpeg';
+
+        for (const key of keysToTry) {
           try {
             const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 6000);
-            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-lite-latest:generateContent?key=${userGeminiKey}`;
+            const timeoutId = setTimeout(() => controller.abort(), 8000);
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-lite-latest:generateContent?key=${key}`;
             const res = await fetch(apiUrl, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
@@ -1812,7 +1822,7 @@
                     weight: Number(wt),
                     unit: (parsed && parsed.unit) || '斤',
                     confidence: (parsed && parsed.confidence) || 'high',
-                    model: 'gemini-flash-lite-latest'
+                    model: 'gemini-flash-lite'
                   };
                 }
               }
@@ -1827,7 +1837,7 @@
           weight: null,
           unit: '斤',
           confidence: 'none',
-          needKey: !userGeminiKey
+          needKey: !userGeminiKey && !BUILTIN_KEY
         };
       }
 

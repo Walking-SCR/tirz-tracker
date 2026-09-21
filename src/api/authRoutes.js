@@ -59,7 +59,7 @@ export async function handleAuthRoutes(request, env, url) {
         (env.TOKEN && env.TOKEN.trim()) ||
         (env.GITHUB_DATA_TOKEN && env.GITHUB_DATA_TOKEN.trim())
       ),
-      hasGeminiKey: !!((env.GEMINI_API_KEY && env.GEMINI_API_KEY.trim()) || (typeof atob === 'function' && atob('QVEuQWI4Uk42SVBGdnlVcEJ6dGw0cHR2dUFrZTZXMkxhUzFjYjh3VXRvcnYwRjRZZjVWX2c=')))
+      hasGeminiKey: !!(env.GEMINI_API_KEY && env.GEMINI_API_KEY.trim())
     }), { headers });
   }
 
