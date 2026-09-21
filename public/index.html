@@ -319,6 +319,9 @@
       <!-- Photo Thumbnail preview -->
       <div class="relative w-full h-36 rounded-2xl overflow-hidden bg-black/60 border border-cyberNeon/30 flex items-center justify-center">
         <img id="confirmPhotoThumb" src="" class="w-full h-full object-contain">
+        <div id="confirmPhotoScanBeam" class="hidden absolute inset-0 pointer-events-none overflow-hidden">
+          <div class="laser-line"></div>
+        </div>
         <span class="absolute bottom-2 left-2 px-2 py-0.5 rounded bg-black/75 text-[9px] font-mono text-cyberNeon border border-cyberNeon/30">
           已挂载秤面图像凭证
         </span>
@@ -578,6 +581,10 @@
     const STORAGE_KEY_WEIGHTS = 'tirzepatide_weights_v3';
     const STORAGE_KEY_DOSES = 'tirzepatide_doses_v3';
 
+    const API_BASE = (window.location.protocol === 'file:')
+      ? 'https://tirz-tracker.walkingscr.workers.dev'
+      : '';
+
     // Cloudflare Worker Zero-Trust Gateway Adapter
     const CloudStorageAdapter = {
       sessionState: {
@@ -616,7 +623,10 @@
 
       async checkAuth() {
         try {
-          const res = await fetch('/api/auth/status', { credentials: 'same-origin', headers: this.getCustomHeaders() });
+          const res = await fetch(`${API_BASE}/api/auth/status`, {
+            credentials: API_BASE ? 'omit' : 'same-origin',
+            headers: this.getCustomHeaders()
+          });
           if (res.status === 404) {
             this.sessionState = { authenticated: false, email: null, isDeviceBound: false, isLocalDemo: true };
             return this.sessionState;
@@ -646,10 +656,10 @@
       },
 
       async login(email) {
-        const res = await fetch('/api/auth/login', {
+        const res = await fetch(`${API_BASE}/api/auth/login`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', ...this.getCustomHeaders() },
-          credentials: 'same-origin',
+          credentials: API_BASE ? 'omit' : 'same-origin',
           body: JSON.stringify({ email })
         });
         const data = await res.json();
@@ -666,10 +676,10 @@
       },
 
       async bootstrap(email, bootstrapSecret) {
-        const res = await fetch('/api/auth/bootstrap', {
+        const res = await fetch(`${API_BASE}/api/auth/bootstrap`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', ...this.getCustomHeaders() },
-          credentials: 'same-origin',
+          credentials: API_BASE ? 'omit' : 'same-origin',
           body: JSON.stringify({ email, bootstrapSecret })
         });
         const data = await res.json();
@@ -687,9 +697,9 @@
 
       async logout() {
         try {
-          await fetch('/api/auth/logout', {
+          await fetch(`${API_BASE}/api/auth/logout`, {
             method: 'POST',
-            credentials: 'same-origin'
+            credentials: API_BASE ? 'omit' : 'same-origin'
           });
         } catch (e) {}
         localStorage.removeItem('tirz_auth_token');
@@ -703,7 +713,10 @@
       },
 
       async getRecords() {
-        const res = await fetch('/api/records', { credentials: 'same-origin', headers: this.getCustomHeaders() });
+        const res = await fetch(`${API_BASE}/api/records`, {
+          credentials: API_BASE ? 'omit' : 'same-origin',
+          headers: this.getCustomHeaders()
+        });
         if (!res.ok) {
           if (res.status === 401) {
             this.sessionState.authenticated = false;
@@ -724,10 +737,10 @@
           remark: record.remark,
           photoBase64: photoBase64
         };
-        const res = await fetch('/api/records', {
+        const res = await fetch(`${API_BASE}/api/records`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', ...this.getCustomHeaders() },
-          credentials: 'same-origin',
+          credentials: API_BASE ? 'omit' : 'same-origin',
           body: JSON.stringify(payload)
         });
         const data = await res.json();
@@ -736,10 +749,10 @@
       },
 
       async deleteRecord(id) {
-        const res = await fetch(`/api/records/${id}`, {
+        const res = await fetch(`${API_BASE}/api/records/${id}`, {
           method: 'DELETE',
           headers: this.getCustomHeaders(),
-          credentials: 'same-origin'
+          credentials: API_BASE ? 'omit' : 'same-origin'
         });
         if (res.status === 404) return true;
         if (!res.ok) {
@@ -750,10 +763,10 @@
       },
 
       async updateRecordPhoto(id, photoBase64) {
-        const res = await fetch(`/api/records/${id}`, {
+        const res = await fetch(`${API_BASE}/api/records/${id}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json', ...this.getCustomHeaders() },
-          credentials: 'same-origin',
+          credentials: API_BASE ? 'omit' : 'same-origin',
           body: JSON.stringify({ photoBase64 })
         });
         const data = await res.json();
@@ -762,16 +775,19 @@
       },
 
       async getDoses() {
-        const res = await fetch('/api/doses', { credentials: 'same-origin', headers: this.getCustomHeaders() });
+        const res = await fetch(`${API_BASE}/api/doses`, {
+          credentials: API_BASE ? 'omit' : 'same-origin',
+          headers: this.getCustomHeaders()
+        });
         if (!res.ok) throw new Error(`获取针剂记录失败 (${res.status})`);
         return await res.json();
       },
 
       async saveDose(dose) {
-        const res = await fetch('/api/doses', {
+        const res = await fetch(`${API_BASE}/api/doses`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', ...this.getCustomHeaders() },
-          credentials: 'same-origin',
+          credentials: API_BASE ? 'omit' : 'same-origin',
           body: JSON.stringify(dose)
         });
         const data = await res.json();
@@ -780,10 +796,10 @@
       },
 
       async deleteDose(id) {
-        const res = await fetch(`/api/doses/${id}`, {
+        const res = await fetch(`${API_BASE}/api/doses/${id}`, {
           method: 'DELETE',
           headers: this.getCustomHeaders(),
-          credentials: 'same-origin'
+          credentials: API_BASE ? 'omit' : 'same-origin'
         });
         if (!res.ok) throw new Error('删除针剂失败');
         return true;
@@ -796,7 +812,7 @@
           return photoStr;
         }
         const cleanPath = photoStr.replace(/^\/?(images\/)?/, '');
-        return `/api/photos/${cleanPath}`;
+        return `${API_BASE}/api/photos/${cleanPath}`;
       }
     };
 
@@ -1555,7 +1571,7 @@
     };
 
     // Client image compression to WebP (preserving scale LCD digits)
-    async function compressScaleImage(file, maxDimension = 1200, quality = 0.82) {
+    async function compressScaleImage(file, maxDimension = 800, quality = 0.72) {
       return new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = (e) => {
@@ -1691,10 +1707,10 @@
 
         // 1. Try Cloudflare Worker AI proxy
         try {
-          const res = await fetch('/api/ai/analyze-scale', {
+          const res = await fetch(`${API_BASE}/api/ai/analyze-scale`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', ...CloudStorageAdapter.getCustomHeaders() },
-            credentials: 'same-origin',
+            credentials: API_BASE ? 'omit' : 'same-origin',
             body: JSON.stringify({
               imageBase64: base64Image,
               apiKey: userGeminiKey
@@ -1719,7 +1735,7 @@
 
         // 2. Try direct Google Gemini API call
         if (userGeminiKey) {
-          const prompt = `This is a photo of a digital weight scale. Carefully identify the LCD or LED display digits showing the person's weight. Return ONLY a JSON object with: {"weight": number, "unit": "斤" or "kg", "confidence": "high" or "medium"}. Example: {"weight": 169.2, "unit": "斤", "confidence": "high"}`;
+          const prompt = `You are a high-speed digital weight scale OCR engine. Look at the bathroom scale photo (including white or colored LED glowing digits under glass, LCD displays, and 7-segment numbers). Extract the weight numeric reading. Return ONLY a valid JSON: {"weight": number, "unit": "斤" or "kg", "confidence": "high"}. Example: {"weight": 168.5, "unit": "斤", "confidence": "high"}`;
           const models = [
             'gemini-flash-lite-latest',
             'gemini-3.1-flash-lite',
@@ -1780,68 +1796,105 @@
 
       async function handleScaleImageUpload(file) {
         if (!file) return;
-        if (scannerOverlay) {
-          scannerOverlay.classList.remove('hidden');
-          if (scanSubText) scanSubText.textContent = 'AI 视觉分析提取液晶屏重量与拍摄时间...';
+        const confirmModal = document.getElementById('confirmModal');
+        const confirmPhotoThumb = document.getElementById('confirmPhotoThumb');
+        const confirmPhotoScanBeam = document.getElementById('confirmPhotoScanBeam');
+        const confirmWeightInput = document.getElementById('confirmWeightInput');
+        const confirmDateInput = document.getElementById('confirmDateInput');
+        const confirmTimeInput = document.getElementById('confirmTimeInput');
+        const confirmRemarkInput = document.getElementById('confirmRemarkInput');
+        const aiDetectConfidence = document.getElementById('aiDetectConfidence');
+
+        // 1. Instantly display preview URL with zero delay
+        const quickPreviewUrl = URL.createObjectURL(file);
+        if (confirmPhotoThumb) confirmPhotoThumb.src = quickPreviewUrl;
+        if (confirmPhotoScanBeam) confirmPhotoScanBeam.classList.remove('hidden');
+
+        const now = new Date();
+        const yyyy = now.getFullYear();
+        const mm = String(now.getMonth() + 1).padStart(2, '0');
+        const dd = String(now.getDate()).padStart(2, '0');
+        const hh = String(now.getHours()).padStart(2, '0');
+        const min = String(now.getMinutes()).padStart(2, '0');
+
+        if (confirmDateInput) confirmDateInput.value = `${yyyy}-${mm}-${dd}`;
+        if (confirmTimeInput) confirmTimeInput.value = `${hh}:${min}`;
+        if (confirmWeightInput) {
+          confirmWeightInput.value = '';
+          confirmWeightInput.placeholder = 'AI 极速识别中...';
+        }
+        if (confirmRemarkInput) confirmRemarkInput.value = '';
+
+        // Show animated high-tech loading state inside the modal
+        if (aiDetectConfidence) {
+          aiDetectConfidence.className = 'text-[10px] text-cyberCyan font-mono mt-1 flex items-center justify-between animate-pulse';
+          aiDetectConfidence.innerHTML = `
+            <span class="flex items-center gap-1.5">
+              <i class="ph-bold ph-spinner animate-spin text-cyberNeon text-sm"></i>
+              <span>AI 视觉正在提取读数...</span>
+            </span>
+            <span class="text-[9px] text-cyberNeon font-bold font-mono">极速处理中</span>
+          `;
         }
 
+        const hour = now.getHours();
+        if (hour < 10) selectedConfirmTag = '早上空腹';
+        else if (hour < 14) selectedConfirmTag = '上午空腹';
+        else selectedConfirmTag = '晚上吃饱';
+        updateConditionTagUI(selectedConfirmTag);
+
+        // Immediately open popup modal with 0ms delay!
+        if (confirmModal) confirmModal.classList.remove('hidden');
+        if (scannerOverlay) scannerOverlay.classList.add('hidden');
+
+        const startTime = Date.now();
+
         try {
-          const compressed = await compressScaleImage(file);
+          // Optimized high-speed compression (800px max, 0.72 quality)
+          const compressed = await compressScaleImage(file, 800, 0.72);
           currentParsedImageBase64 = compressed;
+          if (confirmPhotoThumb) confirmPhotoThumb.src = compressed;
 
           const aiResult = await analyzeScaleWithGemini(compressed);
+          const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
 
-          const now = new Date();
-          const yyyy = now.getFullYear();
-          const mm = String(now.getMonth() + 1).padStart(2, '0');
-          const dd = String(now.getDate()).padStart(2, '0');
-          const hh = String(now.getHours()).padStart(2, '0');
-          const min = String(now.getMinutes()).padStart(2, '0');
+          if (confirmPhotoScanBeam) confirmPhotoScanBeam.classList.add('hidden');
 
-          const confirmModal = document.getElementById('confirmModal');
-          const confirmPhotoThumb = document.getElementById('confirmPhotoThumb');
-          const confirmWeightInput = document.getElementById('confirmWeightInput');
-          const confirmDateInput = document.getElementById('confirmDateInput');
-          const confirmTimeInput = document.getElementById('confirmTimeInput');
-          const confirmRemarkInput = document.getElementById('confirmRemarkInput');
-          const aiDetectConfidence = document.getElementById('aiDetectConfidence');
-
-          if (confirmPhotoThumb) confirmPhotoThumb.src = compressed;
-          if (confirmDateInput) confirmDateInput.value = `${yyyy}-${mm}-${dd}`;
-          if (confirmTimeInput) confirmTimeInput.value = `${hh}:${min}`;
-          if (confirmWeightInput) {
-            if (aiResult.weight !== null && aiResult.weight !== undefined) {
+          if (aiResult && aiResult.weight !== null && aiResult.weight !== undefined) {
+            if (confirmWeightInput) {
               confirmWeightInput.value = aiResult.weight;
-            } else {
-              confirmWeightInput.value = '';
               confirmWeightInput.placeholder = '输入实测斤数';
+              confirmWeightInput.classList.add('border-cyberNeon', 'shadow-[0_0_15px_rgba(0,255,178,0.5)]');
+              setTimeout(() => {
+                confirmWeightInput.classList.remove('shadow-[0_0_15px_rgba(0,255,178,0.5)]');
+              }, 1200);
             }
-          }
-          if (confirmRemarkInput) confirmRemarkInput.value = '';
 
-          if (aiDetectConfidence) {
-            if (aiResult.confidence === 'high' && aiResult.weight) {
+            if (aiDetectConfidence) {
               aiDetectConfidence.className = 'text-[10px] text-cyberNeon font-mono mt-1 flex items-center justify-between';
-              aiDetectConfidence.innerHTML = `<span>AI 视觉识别: 读数提取成功 (<b class="text-white font-black">${aiResult.weight}</b> 斤)</span><span class="text-[9px] text-cyberCyan font-bold">置信度 99%</span>`;
-            } else if (aiResult.needKey) {
-              aiDetectConfidence.className = 'text-[10px] text-amber-400 font-mono mt-1 flex items-center justify-between';
-              aiDetectConfidence.innerHTML = `<span>未接入 Gemini API Key</span><button type="button" id="btnQuickConfigGemini" class="text-cyberCyan underline">点击接入 API Key</button>`;
-            } else {
-              aiDetectConfidence.className = 'text-[10px] text-amber-400 font-mono mt-1 flex items-center justify-between';
-              aiDetectConfidence.innerHTML = `<span>AI 识别未获取到读数，请手动输入</span><button type="button" id="btnQuickConfigGemini" class="text-cyberCyan underline">检查 API Key</button>`;
+              aiDetectConfidence.innerHTML = `
+                <span class="flex items-center gap-1">
+                  <i class="ph-fill ph-check-circle text-cyberNeon text-xs"></i>
+                  <span>AI 识别成功 (<b class="text-white font-black">${aiResult.weight}</b> 斤)</span>
+                </span>
+                <span class="text-[9px] text-cyberCyan font-bold font-mono">耗时 ${elapsed}s · 置信度 99%</span>
+              `;
+            }
+          } else {
+            if (confirmWeightInput) {
+              confirmWeightInput.placeholder = '输入实测斤数';
+              confirmWeightInput.focus();
+            }
+            if (aiDetectConfidence) {
+              if (aiResult && aiResult.needKey) {
+                aiDetectConfidence.className = 'text-[10px] text-amber-400 font-mono mt-1 flex items-center justify-between';
+                aiDetectConfidence.innerHTML = `<span>未接入 Gemini API Key</span><button type="button" id="btnQuickConfigGemini" class="text-cyberCyan underline">点击接入 API Key</button>`;
+              } else {
+                aiDetectConfidence.className = 'text-[10px] text-amber-400 font-mono mt-1 flex items-center justify-between';
+                aiDetectConfidence.innerHTML = `<span>未能自动提取读数，请手动输入</span><button type="button" id="btnQuickConfigGemini" class="text-cyberCyan underline">检查 API Key</button>`;
+              }
             }
           }
-
-          const hour = now.getHours();
-          if (hour < 10) selectedConfirmTag = '早上空腹';
-          else if (hour < 14) selectedConfirmTag = '上午空腹';
-          else selectedConfirmTag = '晚上吃饱';
-
-          updateConditionTagUI(selectedConfirmTag);
-
-          if (scannerOverlay) scannerOverlay.classList.add('hidden');
-          if (confirmModal) confirmModal.classList.remove('hidden');
-          if (confirmWeightInput) confirmWeightInput.focus();
 
           const btnQuickConfigGemini = document.getElementById('btnQuickConfigGemini');
           if (btnQuickConfigGemini) {
@@ -1852,8 +1905,12 @@
           }
         } catch (err) {
           console.error('Scale image process error:', err);
-          if (scannerOverlay) scannerOverlay.classList.add('hidden');
-          showToast('秤面图像处理失败: ' + err.message, true);
+          if (confirmPhotoScanBeam) confirmPhotoScanBeam.classList.add('hidden');
+          if (confirmWeightInput) confirmWeightInput.placeholder = '输入实测斤数';
+          if (aiDetectConfidence) {
+            aiDetectConfidence.className = 'text-[10px] text-amber-400 font-mono mt-1';
+            aiDetectConfidence.textContent = '识别网络超时，请手动输入读数';
+          }
         }
       }
 

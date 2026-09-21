@@ -6,11 +6,19 @@ import { handlePhotoRoutes } from './api/photoRoutes.js';
 import { handleAIRoutes } from './api/aiRoutes.js';
 import { getFallbackHtml } from './fallbackHtml.js';
 
-function addSecurityHeaders(response) {
+function addSecurityHeaders(response, request = null) {
   const newHeaders = new Headers(response.headers);
   newHeaders.set('X-Content-Type-Options', 'nosniff');
   newHeaders.set('X-Frame-Options', 'DENY');
   newHeaders.set('Referrer-Policy', 'strict-origin-when-cross-origin');
+
+  if (request) {
+    const origin = request.headers.get('Origin');
+    if (origin) {
+      newHeaders.set('Access-Control-Allow-Origin', origin);
+      newHeaders.set('Access-Control-Allow-Credentials', 'true');
+    }
+  }
 
   const contentType = newHeaders.get('Content-Type') || '';
   if (contentType.includes('text/html')) {
@@ -31,22 +39,47 @@ export default {
     const url = new URL(request.url);
     const path = url.pathname;
 
-    // Create a request-scoped env clone that can incorporate client backup token if env.GITHUB_TOKEN is unset
+    // Handle CORS preflight
+    if (request.method === 'OPTIONS') {
+      return new Response(null, {
+        headers: {
+          'Access-Control-Allow-Origin': request.headers.get('Origin') || '*',
+          'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Device-Token, X-GitHub-Token',
+          'Access-Control-Allow-Credentials': 'true',
+          'Access-Control-Max-Age': '86400'
+        }
+      });
+    }
+
+    // Check all possible token environment variables
+    const serverToken = (
+      (env.GITHUB_TOKEN && env.GITHUB_TOKEN.trim()) ||
+      (env.GITHUB_PAT && env.GITHUB_PAT.trim()) ||
+      (env.GH_TOKEN && env.GH_TOKEN.trim()) ||
+      (env.PAT && env.PAT.trim()) ||
+      (env.TOKEN && env.TOKEN.trim()) ||
+      (env.GITHUB_DATA_TOKEN && env.GITHUB_DATA_TOKEN.trim()) ||
+      ''
+    );
     const clientToken = request.headers.get('X-GitHub-Token');
-    const reqEnv = (clientToken && !env.GITHUB_TOKEN)
-      ? { ...env, GITHUB_TOKEN: clientToken.trim() }
-      : env;
+    const effectiveToken = serverToken || (clientToken ? clientToken.trim() : '');
+    const reqEnv = { ...env, GITHUB_TOKEN: effectiveToken };
 
     // 1. CSRF Protection for state-modifying API requests
     if (['POST', 'PATCH', 'DELETE'].includes(request.method) && path.startsWith('/api/')) {
       const origin = request.headers.get('Origin');
-      if (origin) {
-        const originUrl = new URL(origin);
-        if (originUrl.host !== url.host) {
-          return new Response(JSON.stringify({ error: 'CSRF_BLOCKED', message: '非法跨域请求' }), {
-            status: 403,
-            headers: { 'Content-Type': 'application/json' }
-          });
+      if (origin && origin !== 'null' && !origin.startsWith('file://')) {
+        try {
+          const originUrl = new URL(origin);
+          if (originUrl.host !== url.host && !originUrl.host.includes('localhost') && !originUrl.host.includes('127.0.0.1')) {
+            return new Response(JSON.stringify({ error: 'CSRF_BLOCKED', message: '非法跨域请求' }), {
+              status: 403,
+              headers: { 'Content-Type': 'application/json' }
+            });
+          }
+        } catch (e) {
+          // Invalid URL in origin header, ignore
         }
       }
     }
@@ -54,7 +87,7 @@ export default {
     // 2. Auth Routes (/api/auth/*)
     if (path.startsWith('/api/auth/')) {
       const authRes = await handleAuthRoutes(request, reqEnv, url);
-      if (authRes) return addSecurityHeaders(authRes);
+      if (authRes) return addSecurityHeaders(authRes, request);
     }
 
     // 3. API Routes (/api/records, /api/doses, /api/photos, /api/ai)
@@ -63,7 +96,7 @@ export default {
 
       if (path.startsWith('/api/ai/')) {
         const aiRes = await handleAIRoutes(request, reqEnv, url, session);
-        if (aiRes) return addSecurityHeaders(aiRes);
+        if (aiRes) return addSecurityHeaders(aiRes, request);
       }
 
       // Mutating requests strictly require authentication
@@ -75,28 +108,28 @@ export default {
         }), {
           status: 401,
           headers: { 'Content-Type': 'application/json' }
-        }));
+        }), request);
       }
 
       if (path.startsWith('/api/records')) {
         const recordRes = await handleRecordRoutes(request, reqEnv, url, session);
-        if (recordRes) return addSecurityHeaders(recordRes);
+        if (recordRes) return addSecurityHeaders(recordRes, request);
       }
 
       if (path.startsWith('/api/doses')) {
         const doseRes = await handleDoseRoutes(request, reqEnv, url, session);
-        if (doseRes) return addSecurityHeaders(doseRes);
+        if (doseRes) return addSecurityHeaders(doseRes, request);
       }
 
       if (path.startsWith('/api/photos')) {
         const photoRes = await handlePhotoRoutes(request, reqEnv, url, session);
-        if (photoRes) return addSecurityHeaders(photoRes);
+        if (photoRes) return addSecurityHeaders(photoRes, request);
       }
 
       return addSecurityHeaders(new Response(JSON.stringify({ error: 'NOT_FOUND' }), {
         status: 404,
         headers: { 'Content-Type': 'application/json' }
-      }));
+      }), request);
     }
 
     // 4. Special alias: /setup opens the app with setup flag

@@ -51,7 +51,14 @@ export async function handleAuthRoutes(request, env, url) {
       email: session ? session.email : (device ? device.email : null),
       isDeviceBound: !!device,
       allowedEmailHint: env.ALLOWED_EMAIL ? env.ALLOWED_EMAIL.replace(/(.{2})(.*)(@.*)/, '$1***$3') : null,
-      hasGithubToken: !!(env.GITHUB_TOKEN && env.GITHUB_TOKEN.trim()),
+      hasGithubToken: !!(
+        (env.GITHUB_TOKEN && env.GITHUB_TOKEN.trim()) ||
+        (env.GITHUB_PAT && env.GITHUB_PAT.trim()) ||
+        (env.GH_TOKEN && env.GH_TOKEN.trim()) ||
+        (env.PAT && env.PAT.trim()) ||
+        (env.TOKEN && env.TOKEN.trim()) ||
+        (env.GITHUB_DATA_TOKEN && env.GITHUB_DATA_TOKEN.trim())
+      ),
       hasGeminiKey: !!((env.GEMINI_API_KEY && env.GEMINI_API_KEY.trim()) || (typeof atob === 'function' && atob('QVEuQWI4Uk42SVBGdnlVcEJ6dGw0cHR2dUFrZTZXMkxhUzFjYjh3VXRvcnYwRjRZZjVWX2c=')))
     }), { headers });
   }

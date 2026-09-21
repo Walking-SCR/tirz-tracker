@@ -58,7 +58,7 @@ export async function handleAIRoutes(request, env, url, session) {
     const mimeMatch = imageBase64.match(/^data:([^;]+);base64,/);
     const mimeType = mimeMatch ? mimeMatch[1] : 'image/jpeg';
     const pureBase64 = imageBase64.replace(/^data:[^;]+;base64,/, '').replace(/\s/g, '');
-    const prompt = `This is a photo of a digital weight scale. Carefully identify the LCD or LED display digits showing the person's weight. Return ONLY a JSON object with: {"weight": number, "unit": "斤" or "kg", "confidence": "high" or "medium"}. Example: {"weight": 169.2, "unit": "斤", "confidence": "high"}`;
+    const prompt = `You are a high-speed digital weight scale OCR engine. Look at the bathroom scale photo (including white or colored LED glowing digits under glass, LCD displays, and 7-segment numbers). Extract the weight numeric reading. Return ONLY a valid JSON: {"weight": number, "unit": "斤" or "kg", "confidence": "high"}. Example: {"weight": 168.5, "unit": "斤", "confidence": "high"}`;
 
     const modelsToTry = [
       'gemini-flash-lite-latest',
