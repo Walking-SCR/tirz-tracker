@@ -2,7 +2,7 @@
 // The browser never supplies an API key: GEMINI_API_KEY must be a Worker Secret.
 
 const MAX_IMAGE_BASE64_LENGTH = 4_000_000;
-const UPSTREAM_TIMEOUT_MS = 6_000;
+const UPSTREAM_TIMEOUT_MS = 10_000;
 
 function extractJson(text) {
   if (!text) return null;
@@ -60,7 +60,7 @@ export async function handleAIRoutes(request, env, url, session) {
   const pureBase64 = imageBase64.replace(/^data:[^;]+;base64,/i, '').replace(/\s/g, '');
   if (!/^image\/(?:jpeg|png|webp|heic|heif)$/.test(mimeType)) {
     logEvent('warn', 'ai_request_rejected', { requestId, reason: 'unsupported_mime', mimeType });
-    return jsonResponse({ error: 'UNSUPPORTED_IMAGE_TYPE', message: '仅支持 JPG、PNG、WebP、HEIC 或 HEIF 图片' }, 415, requestId);
+    return jsonResponse({ error: 'UNSUPPORTED_IMAGE_TYPE', message: '暂不支持此图片格式，请重试' }, 415, requestId);
   }
   if (!pureBase64 || pureBase64.length < 100) {
     logEvent('warn', 'ai_request_rejected', { requestId, reason: 'invalid_image', mimeType });
@@ -81,10 +81,11 @@ export async function handleAIRoutes(request, env, url, session) {
   const prompt = `Extract the weight number from this digital bathroom scale photo (white/colored LED digits under glass or LCD 7-segment display). Return ONLY valid JSON: {"weight": number, "unit": "斤"}. Example: {"weight": 168.5, "unit": "斤"}`;
   // The numbered model is currently the more reliable first choice. Keep the
   // alias as a fallback for transient model/region failures.
-  const modelsToTry = ['gemini-3.1-flash-lite', 'gemini-flash-lite-latest'];
+  const modelsToTry = ['gemini-flash-lite-latest', 'gemini-3.1-flash-lite'];
   let lastError = null;
   let lastStatus = 502;
   const upstreamStatuses = [];
+  let lastUpstreamReason = '';
   let timeoutCount = 0;
 
   for (const model of modelsToTry) {
@@ -118,6 +119,7 @@ export async function handleAIRoutes(request, env, url, session) {
           const parsedError = JSON.parse(upstreamText);
           upstreamReason = parsedError.error?.message || parsedError.message || upstreamReason;
         } catch {}
+        lastUpstreamReason = upstreamReason;
         lastError = new Error(`Gemini upstream HTTP ${res.status}`);
         logEvent('warn', 'ai_upstream_error', {
           requestId,
@@ -172,8 +174,8 @@ export async function handleAIRoutes(request, env, url, session) {
       : rateLimited
         ? 'Gemini 服务请求频繁或额度已用尽，请稍后重试'
         : badRequest
-          ? '图片格式或内容无法被 Gemini 处理，请重新拍摄'
-          : '识别服务暂时不可用，请稍后重试';
+          ? (lastUpstreamReason ? `图片解析失败: ${lastUpstreamReason}` : '图片格式或内容无法处理，请重新拍摄')
+          : (lastUpstreamReason || '识别服务暂时不可用，请稍后重试');
   logEvent('error', 'ai_request_failed', { requestId, error, upstreamStatus: lastStatus, durationMs: Date.now() - startedAt });
   return jsonResponse({ error, message }, timedOut ? 504 : 502, requestId);
 }

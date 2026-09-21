@@ -236,8 +236,8 @@
         </div>
 
         <!-- Dual Hidden file inputs: one for system gallery/files, one for direct camera -->
-        <input type="file" id="scaleGalleryInput" accept="image/*" class="absolute opacity-0 pointer-events-none w-0 h-0">
-        <input type="file" id="scaleCameraInput" accept="image/*" capture="environment" class="absolute opacity-0 pointer-events-none w-0 h-0">
+        <input type="file" id="scaleGalleryInput" accept="image/*,.heic,.heif" class="absolute opacity-0 pointer-events-none w-0 h-0">
+        <input type="file" id="scaleCameraInput" accept="image/*,.heic,.heif" capture="environment" class="absolute opacity-0 pointer-events-none w-0 h-0">
         
         <div class="py-2 flex flex-col items-center justify-center space-y-2.5">
           <div class="w-14 h-14 rounded-2xl bg-gradient-to-tr from-cyberNeon/20 to-cyberCyan/15 border border-cyberNeon/40 flex items-center justify-center text-cyberNeon shadow-[0_0_20px_rgba(0,255,178,0.25)]">
@@ -390,7 +390,7 @@
   </div>
 
   <!-- Hidden input for updating specific record photo -->
-  <input type="file" id="replacePhotoInput" accept="image/*" class="hidden">
+  <input type="file" id="replacePhotoInput" accept="image/*,.heic,.heif" class="hidden">
 
   <!-- Cyber Toast Notification -->
   <div id="cyberToast" class="fixed left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-full glass-hud border border-cyberNeon/50 text-white font-mono text-xs shadow-[0_0_25px_rgba(0,255,178,0.3)] flex items-center gap-2 pointer-events-none transition-all duration-300 opacity-0 translate-y-[-20px]" style="top: calc(env(safe-area-inset-top, 0px) + 16px);">
@@ -1577,34 +1577,38 @@
 
     function fallbackFileReader(file, resolve) {
       const isHeic = /image\/(?:heic|heif)/i.test(file.type || '') || /\.hei[cf]$/i.test(file.name || '');
-      if (isHeic) {
-        if (typeof window.heic2any !== 'function') {
-          resolve('');
-          return;
-        }
+      console.warn('[OCR] fallback image conversion', JSON.stringify({ isHeic, fileType: file.type || '', fileName: file.name || '', heic2any: typeof window.heic2any }));
+      if (isHeic && typeof window.heic2any === 'function') {
         window.heic2any({ blob: file, toType: 'image/jpeg', quality: 0.82 })
           .then((converted) => {
             const blob = Array.isArray(converted) ? converted[0] : converted;
             if (!blob) throw new Error('HEIC conversion returned no data');
-            resizeBlobToJpegDataUrl(blob, 800, 0.72).then((dataUrl) => {
-              if (dataUrl) resolve(dataUrl);
-              else resolve('');
-            });
+            return resizeBlobToJpegDataUrl(blob, 540, 0.68);
           })
-          .catch(() => resolve(''));
+          .then((dataUrl) => {
+            if (dataUrl) return resolve(dataUrl);
+            readFileAsDataUrl(file, resolve);
+          })
+          .catch((error) => {
+            console.warn('[OCR] HEIC conversion unavailable, sending original image', error?.message || error);
+            readFileAsDataUrl(file, resolve);
+          });
         return;
       }
-      readFileAsDataUrl(file, resolve);
+      resizeBlobToJpegDataUrl(file, 540, 0.68)
+        .then((dataUrl) => resolve(dataUrl || ''))
+        .catch((error) => {
+          console.warn('[OCR] browser image decode failed, sending original image', error?.message || error);
+          readFileAsDataUrl(file, resolve);
+        });
     }
 
     function readFileAsDataUrl(file, resolve) {
       const reader = new FileReader();
       reader.onerror = () => resolve('');
-      // iOS can leave File.type empty for camera-roll HEIC files. Preserve the
-      // real MIME type instead of sending an opaque/octet-stream data URL.
-      const inferredMime = inferImageMimeType(file);
-      reader.onload = (e) => {
-        let dataUrl = String(e.target.result || '');
+      reader.onload = (event) => {
+        let dataUrl = String(event.target?.result || '');
+        const inferredMime = inferImageMimeType(file);
         if (inferredMime && /^data:(?:application\/octet-stream|application\/binary|);base64,/i.test(dataUrl)) {
           dataUrl = dataUrl.replace(/^data:[^;]*;base64,/i, `data:${inferredMime};base64,`);
         }
@@ -2408,14 +2412,14 @@
       if ('caches' in window) {
         caches.keys().then(names => {
           for (let name of names) {
-            if (name !== 'tirz-tracker-v5.0') {
+            if (name !== 'tirz-tracker-v5.1') {
               caches.delete(name);
             }
           }
         });
       }
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/sw.js?v=5.0', { updateViaCache: 'none' })
+        navigator.serviceWorker.register('/sw.js?v=5.1', { updateViaCache: 'none' })
           .then((registration) => {
             registration.update();
             registration.onupdatefound = () => {

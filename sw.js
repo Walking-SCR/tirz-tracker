@@ -1,5 +1,5 @@
 // Service Worker for Tirzepatide Tracker V2 PWA (Static-Only Cache)
-const CACHE_NAME = 'tirz-tracker-v5.0';
+const CACHE_NAME = 'tirz-tracker-v5.1';
 const STATIC_ASSETS = [
   './',
   './index.html',
@@ -7,7 +7,8 @@ const STATIC_ASSETS = [
   './icons/icon.svg',
   './icons/icon-192.png',
   './icons/icon-512.png',
-  './icons/apple-touch-icon.png'
+  './icons/apple-touch-icon.png',
+  './vendor/heic2any.min.js'
 ];
 
 self.addEventListener('install', (event) => {

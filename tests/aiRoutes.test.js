@@ -98,7 +98,7 @@ test('limits generation output for minimum latency', async () => {
   }
 });
 
-test('passes HEIC images through to Gemini without requiring browser conversion', async () => {
+test('passes raw HEIC images through when browser conversion is unavailable', async () => {
   const originalFetch = globalThis.fetch;
   let sentMimeType = '';
   globalThis.fetch = async (_input, init) => {
