@@ -6,6 +6,17 @@ import { handlePhotoRoutes } from './api/photoRoutes.js';
 import { handleAIRoutes } from './api/aiRoutes.js';
 import { getFallbackHtml } from './fallbackHtml.js';
 
+const ALLOWED_EXTERNAL_ORIGINS = new Set(['https://walking-scr.github.io']);
+
+function isAllowedOrigin(origin, request) {
+  if (!origin || origin === 'null' || origin.startsWith('file://')) return false;
+  try {
+    return origin === new URL(request.url).origin || ALLOWED_EXTERNAL_ORIGINS.has(origin);
+  } catch {
+    return false;
+  }
+}
+
 function addSecurityHeaders(response, request = null) {
   const newHeaders = new Headers(response.headers);
   newHeaders.set('X-Content-Type-Options', 'nosniff');
@@ -14,9 +25,10 @@ function addSecurityHeaders(response, request = null) {
 
   if (request) {
     const origin = request.headers.get('Origin');
-    if (origin) {
+    if (isAllowedOrigin(origin, request)) {
       newHeaders.set('Access-Control-Allow-Origin', origin);
       newHeaders.set('Access-Control-Allow-Credentials', 'true');
+      newHeaders.append('Vary', 'Origin');
     }
   }
 
@@ -42,14 +54,17 @@ export default {
 
     // Handle CORS preflight
     if (request.method === 'OPTIONS') {
+      const origin = request.headers.get('Origin');
+      const corsHeaders = {
+        'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Device-Token, X-GitHub-Token',
+        'Access-Control-Allow-Credentials': 'true',
+        'Access-Control-Max-Age': '86400',
+        'Vary': 'Origin'
+      };
+      if (isAllowedOrigin(origin, request)) corsHeaders['Access-Control-Allow-Origin'] = origin;
       return new Response(null, {
-        headers: {
-          'Access-Control-Allow-Origin': request.headers.get('Origin') || '*',
-          'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
-          'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Device-Token, X-GitHub-Token',
-          'Access-Control-Allow-Credentials': 'true',
-          'Access-Control-Max-Age': '86400'
-        }
+        headers: corsHeaders
       });
     }
 
@@ -73,7 +88,7 @@ export default {
       if (origin && origin !== 'null' && !origin.startsWith('file://')) {
         try {
           const originUrl = new URL(origin);
-          if (originUrl.host !== url.host && !originUrl.host.includes('localhost') && !originUrl.host.includes('127.0.0.1')) {
+          if (originUrl.host !== url.host && !ALLOWED_EXTERNAL_ORIGINS.has(origin) && !originUrl.host.includes('localhost') && !originUrl.host.includes('127.0.0.1')) {
             return new Response(JSON.stringify({ error: 'CSRF_BLOCKED', message: '非法跨域请求' }), {
               status: 403,
               headers: { 'Content-Type': 'application/json' }

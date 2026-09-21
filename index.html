@@ -561,16 +561,13 @@
         </div>
         <div class="p-2.5 rounded-xl bg-black/60 border border-white/5">
           <div class="text-[10px] text-neutral-500 flex items-center justify-between">
-            <span>AI 视觉识别 Key (Gemini API)</span>
-            <span id="geminiKeyStatusBadge" class="text-[9px] text-neutral-400">可选</span>
+            <span>AI 视觉识别服务 (Gemini)</span>
+            <span id="geminiKeyStatusBadge" class="text-[9px] text-neutral-400">检测中</span>
           </div>
           <div class="mt-1 flex items-center gap-1.5">
-            <input type="password" id="inputUserGeminiKey" placeholder="输入 Gemini API Key" class="flex-1 h-7 px-2 rounded-lg bg-black/50 border border-white/10 text-[10px] text-white focus:outline-none focus:border-cyberNeon">
-            <button id="btnSaveGeminiKey" type="button" class="h-7 px-2 rounded-lg bg-cyberNeon/15 hover:bg-cyberNeon/25 border border-cyberNeon/40 text-cyberNeon text-[10px] font-bold">
-              保存
-            </button>
+            <span class="text-[10px] text-cyberCyan">Worker Secret</span>
           </div>
-          <p class="text-[9px] text-neutral-500 mt-1">填入 Key 后，拍照或选图即可自动识别秤面数字</p>
+          <p class="text-[9px] text-neutral-500 mt-1">识别请求由 Cloudflare Worker 代理，API Key 仅保存在服务器 Secret 中</p>
         </div>
       </div>
 
@@ -591,8 +588,11 @@
     const STORAGE_KEY_WEIGHTS = 'tirzepatide_weights_v3';
     const STORAGE_KEY_DOSES = 'tirzepatide_doses_v3';
 
-    const API_BASE = (window.location.protocol === 'file:')
-      ? 'https://tirz-tracker.walkingscr.workers.dev'
+    // GitHub Pages remains a supported shell; only its API calls cross to the Worker.
+    // Gemini credentials never leave the Worker and are not accepted from the browser.
+    const WORKER_API_BASE = 'https://tirz-tracker.walkingscr.workers.dev';
+    const API_BASE = (window.location.protocol === 'file:' || window.location.hostname.endsWith('.github.io'))
+      ? WORKER_API_BASE
       : '';
 
     // Cloudflare Worker Zero-Trust Gateway Adapter
@@ -1031,7 +1031,6 @@
       const ghBadge = document.getElementById('ghTokenStatusBadge');
       const geminiBadge = document.getElementById('geminiKeyStatusBadge');
       const hasLocalGh = !!localStorage.getItem('tirz_user_gh_token');
-      const hasLocalGemini = typeof getEffectiveGeminiKey === 'function' ? !!getEffectiveGeminiKey() : !!(localStorage.getItem('tirz_gemini_api_key') || localStorage.getItem('gemini_api_key'));
 
       if (ghBadge) {
         if (state.hasGithubToken || hasLocalGh) {
@@ -1043,11 +1042,11 @@
         }
       }
       if (geminiBadge) {
-        if (state.hasGeminiKey || hasLocalGemini) {
+        if (state.hasGeminiKey) {
           geminiBadge.textContent = 'AI 识别已就绪';
           geminiBadge.className = 'text-[9px] text-cyberNeon font-bold';
         } else {
-          geminiBadge.textContent = '未配置 (点击填入)';
+          geminiBadge.textContent = '服务器未配置';
           geminiBadge.className = 'text-[9px] text-neutral-400';
         }
       }
@@ -1602,52 +1601,103 @@
       modal.classList.remove('hidden');
     };
 
-    // Client image compression to WebP (preserving scale LCD digits)
-    async function compressScaleImage(file, maxDimension = 640, quality = 0.70) {
-      return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = (e) => {
-          const rawDataUrl = e.target.result;
-          const img = new Image();
-          img.onload = () => {
-            let width = img.naturalWidth || img.width;
-            let height = img.naturalHeight || img.height;
-            if (!width || !height) return resolve(rawDataUrl);
-            if (width > height) {
-              if (width > maxDimension) {
-                height = Math.round((height * maxDimension) / width);
-                width = maxDimension;
-              }
-            } else {
-              if (height > maxDimension) {
-                width = Math.round((width * maxDimension) / height);
-                height = maxDimension;
-              }
+    // High-speed client image compression to JPEG (optimized for iOS & scale LCD digits)
+    async function compressScaleImage(file, maxDimension = 800, quality = 0.75) {
+      if (!file) return '';
+      // 1. Hardware-accelerated decode via createImageBitmap (iOS 15+, instant, low memory)
+      if (typeof createImageBitmap === 'function') {
+        try {
+          const bitmap = await createImageBitmap(file);
+          let width = bitmap.width;
+          let height = bitmap.height;
+          if (width > height) {
+            if (width > maxDimension) {
+              height = Math.round((height * maxDimension) / width);
+              width = maxDimension;
             }
-            const canvas = document.createElement('canvas');
-            canvas.width = width;
-            canvas.height = height;
-            const ctx = canvas.getContext('2d');
-            ctx.fillStyle = '#FFFFFF';
-            ctx.fillRect(0, 0, width, height);
-            ctx.drawImage(img, 0, 0, width, height);
+          } else {
+            if (height > maxDimension) {
+              width = Math.round((width * maxDimension) / height);
+              height = maxDimension;
+            }
+          }
+          const canvas = document.createElement('canvas');
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          ctx.fillStyle = '#FFFFFF';
+          ctx.fillRect(0, 0, width, height);
+          ctx.drawImage(bitmap, 0, 0, width, height);
+          if (typeof bitmap.close === 'function') bitmap.close();
+          const jpegUrl = canvas.toDataURL('image/jpeg', quality);
+          if (jpegUrl && jpegUrl.length > 200 && jpegUrl.startsWith('data:image/jpeg')) {
+            return jpegUrl;
+          }
+        } catch (bitmapErr) {
+          console.warn('createImageBitmap failed, trying Image fallback:', bitmapErr);
+        }
+      }
 
-            try {
-              const jpegUrl = canvas.toDataURL('image/jpeg', 0.80);
-              if (jpegUrl && jpegUrl.length > 100 && jpegUrl.startsWith('data:image/')) {
-                return resolve(jpegUrl);
-              }
-            } catch (canvasErr) {
-              console.warn('Canvas toDataURL failed, using raw data', canvasErr);
+      // 2. High-speed Blob URL Image fallback (native WebKit ImageIO HEIC & JPEG support)
+      return new Promise((resolve) => {
+        let objectUrl = null;
+        try {
+          objectUrl = URL.createObjectURL(file);
+        } catch (e) {
+          console.warn('createObjectURL failed:', e);
+        }
+
+        const img = new Image();
+        img.onload = () => {
+          if (objectUrl) URL.revokeObjectURL(objectUrl);
+          let width = img.naturalWidth || img.width;
+          let height = img.naturalHeight || img.height;
+          if (!width || !height) return fallbackFileReader(file, resolve);
+          if (width > height) {
+            if (width > maxDimension) {
+              height = Math.round((height * maxDimension) / width);
+              width = maxDimension;
             }
-            resolve(rawDataUrl);
-          };
-          img.onerror = () => resolve(rawDataUrl);
-          img.src = rawDataUrl;
+          } else {
+            if (height > maxDimension) {
+              width = Math.round((width * maxDimension) / height);
+              height = maxDimension;
+            }
+          }
+          const canvas = document.createElement('canvas');
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          ctx.fillStyle = '#FFFFFF';
+          ctx.fillRect(0, 0, width, height);
+          ctx.drawImage(img, 0, 0, width, height);
+          try {
+            const jpegUrl = canvas.toDataURL('image/jpeg', quality);
+            if (jpegUrl && jpegUrl.length > 200 && jpegUrl.startsWith('data:image/jpeg')) {
+              return resolve(jpegUrl);
+            }
+          } catch (canvasErr) {
+            console.warn('Canvas toDataURL failed:', canvasErr);
+          }
+          fallbackFileReader(file, resolve);
         };
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
+        img.onerror = () => {
+          if (objectUrl) URL.revokeObjectURL(objectUrl);
+          fallbackFileReader(file, resolve);
+        };
+        if (objectUrl) {
+          img.src = objectUrl;
+        } else {
+          fallbackFileReader(file, resolve);
+        }
       });
+    }
+
+    function fallbackFileReader(file, resolve) {
+      const reader = new FileReader();
+      reader.onload = (e) => resolve(e.target.result);
+      reader.onerror = () => resolve('');
+      reader.readAsDataURL(file);
     }
 
     function updateConditionTagUI(activeTag) {
@@ -1709,136 +1759,39 @@
         });
       }
 
-      const BUILTIN_GEMINI_KEY = typeof atob === 'function' ? atob('QVEuQWI4Uk42SVBGdnlVcEJ6dGw0cHR2dUFrZTZXMkxhUzFjYjh3VXRvcnYwRjRZZjVWX2c=') : '';
-
-      function getEffectiveGeminiKey() {
-        const local = (localStorage.getItem('tirz_gemini_api_key') || '').trim();
-        if (local) return local;
-        const legacy = (localStorage.getItem('gemini_api_key') || '').trim();
-        if (legacy) return legacy;
-        return BUILTIN_GEMINI_KEY;
-      }
-
-      function extractJsonClient(text) {
-        if (!text) return null;
-        try { return JSON.parse(text.trim()); } catch {}
-        const codeFenceMatch = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
-        if (codeFenceMatch) {
-          try { return JSON.parse(codeFenceMatch[1].trim()); } catch {}
-        }
-        const firstBrace = text.indexOf('{');
-        const lastBrace = text.lastIndexOf('}');
-        if (firstBrace !== -1 && lastBrace > firstBrace) {
-          try { return JSON.parse(text.substring(firstBrace, lastBrace + 1)); } catch {}
-        }
-        const numMatch = text.match(/(\d{2,3}(?:\.\d{1,2})?)/);
-        if (numMatch) {
-          return { weight: parseFloat(numMatch[1]), unit: '斤' };
-        }
-        return null;
-      }
-
       async function analyzeScaleWithGemini(base64Image) {
-        const pureBase64 = base64Image.replace(/^data:[^;]+;base64,/, '').replace(/\s/g, '');
-        const userGeminiKey = getEffectiveGeminiKey();
-        const BUILTIN_KEY = BUILTIN_GEMINI_KEY;
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 15000);
 
-        if (!userGeminiKey && !BUILTIN_KEY) {
-          return {
-            weight: null,
-            unit: '斤',
-            confidence: 'none',
-            needKey: true
-          };
-        }
-
-        // 1. Try Cloudflare Worker AI proxy
         try {
           const res = await fetch(`${API_BASE}/api/ai/analyze-scale`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', ...CloudStorageAdapter.getCustomHeaders() },
             credentials: API_BASE ? 'omit' : 'same-origin',
-            body: JSON.stringify({
-              imageBase64: base64Image,
-              apiKey: userGeminiKey || BUILTIN_KEY
-            })
+            signal: controller.signal,
+            body: JSON.stringify({ imageBase64: base64Image })
           });
-          if (res.ok) {
-            const data = await res.json();
-            let wt = data.weight;
-            if (typeof wt === 'string') wt = parseFloat(wt.replace(/[^0-9.]/g, ''));
-            if (wt && !isNaN(Number(wt)) && Number(wt) > 0) {
-              return {
-                weight: Number(wt),
-                unit: data.unit || '斤',
-                confidence: data.confidence || 'high',
-                model: data.model || 'Gemini'
-              };
-            }
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) {
+            const error = new Error(data.message || '识别服务暂时不可用');
+            error.code = data.error;
+            error.requestId = data.requestId;
+            throw error;
           }
-        } catch (e) {
-          console.warn('Worker AI analyze error, trying direct fallback:', e);
-        }
-
-        // 2. Direct fallback (tries user's key first, then verified builtin key)
-        const keysToTry = [];
-        if (userGeminiKey) keysToTry.push(userGeminiKey);
-        if (BUILTIN_KEY && !keysToTry.includes(BUILTIN_KEY)) keysToTry.push(BUILTIN_KEY);
-
-        const prompt = `You are a high-speed digital weight scale OCR engine. Look at the bathroom scale photo (including white or colored LED glowing digits under glass, LCD displays, and 7-segment numbers). Extract the weight numeric reading. Return ONLY a valid JSON: {"weight": number, "unit": "斤" or "kg", "confidence": "high"}. Example: {"weight": 168.5, "unit": "斤", "confidence": "high"}`;
-        const mimeMatch = base64Image.match(/^data:([^;]+);base64,/);
-        const mimeType = mimeMatch ? mimeMatch[1] : 'image/jpeg';
-
-        for (const key of keysToTry) {
-          try {
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 8000);
-            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-lite-latest:generateContent?key=${key}`;
-            const res = await fetch(apiUrl, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              signal: controller.signal,
-              body: JSON.stringify({
-                contents: [{
-                  role: 'user',
-                  parts: [
-                    { text: prompt },
-                    { inlineData: { mimeType: mimeType, data: pureBase64 } }
-                  ]
-                }],
-                generationConfig: { responseMimeType: 'application/json' }
-              })
-            });
-            clearTimeout(timeoutId);
-            if (res.ok) {
-              const data = await res.json();
-              const textRes = data.candidates?.[0]?.content?.parts?.[0]?.text;
-              if (textRes) {
-                const parsed = extractJsonClient(textRes);
-                let wt = parsed ? parsed.weight : null;
-                if (typeof wt === 'string') wt = parseFloat(wt.replace(/[^0-9.]/g, ''));
-                if (wt && !isNaN(Number(wt)) && Number(wt) > 0) {
-                  return {
-                    weight: Number(wt),
-                    unit: (parsed && parsed.unit) || '斤',
-                    confidence: (parsed && parsed.confidence) || 'high',
-                    model: 'gemini-flash-lite'
-                  };
-                }
-              }
-            }
-          } catch (err) {
-            console.warn('Direct fallback call error:', err);
+          const weight = Number(data.weight);
+          if (!Number.isFinite(weight) || weight <= 0) {
+            throw new Error('识别服务返回了无效读数');
           }
+          return {
+            weight,
+            unit: data.unit || '斤',
+            confidence: data.confidence || 'high',
+            model: data.model || 'Gemini',
+            durationMs: data.durationMs
+          };
+        } finally {
+          clearTimeout(timeoutId);
         }
-
-        // 3. No fallback weight (smart blank-prevention deleted as requested). Return null if not recognized.
-        return {
-          weight: null,
-          unit: '斤',
-          confidence: 'none',
-          needKey: !userGeminiKey && !BUILTIN_KEY
-        };
       }
 
       async function handleScaleImageUpload(file) {
@@ -1933,30 +1886,30 @@
               confirmWeightInput.focus();
             }
             if (aiDetectConfidence) {
-              if (aiResult && aiResult.needKey) {
-                aiDetectConfidence.className = 'text-[10px] text-amber-400 font-mono mt-1 flex items-center justify-between';
-                aiDetectConfidence.innerHTML = `<span>未接入 Gemini API Key</span><button type="button" id="btnQuickConfigGemini" class="text-cyberCyan underline">点击接入 API Key</button>`;
-              } else {
-                aiDetectConfidence.className = 'text-[10px] text-amber-400 font-mono mt-1 flex items-center justify-between';
-                aiDetectConfidence.innerHTML = `<span>未能自动提取读数，请手动输入</span><button type="button" id="btnQuickConfigGemini" class="text-cyberCyan underline">检查 API Key</button>`;
-              }
+              aiDetectConfidence.className = 'text-[10px] text-amber-400 font-mono mt-1';
+              aiDetectConfidence.textContent = '未能自动提取读数，请手动输入';
             }
           }
 
-          const btnQuickConfigGemini = document.getElementById('btnQuickConfigGemini');
-          if (btnQuickConfigGemini) {
-            btnQuickConfigGemini.onclick = () => {
-              const sessionInfoModal = document.getElementById('sessionInfoModal');
-              if (sessionInfoModal) sessionInfoModal.classList.remove('hidden');
-            };
-          }
         } catch (err) {
           console.error('Scale image process error:', err);
           if (confirmPhotoScanBeam) confirmPhotoScanBeam.classList.add('hidden');
-          if (confirmWeightInput) confirmWeightInput.placeholder = '输入实测斤数';
+          if (confirmWeightInput) {
+            confirmWeightInput.placeholder = '输入实测斤数';
+            confirmWeightInput.focus();
+          }
           if (aiDetectConfidence) {
             aiDetectConfidence.className = 'text-[10px] text-amber-400 font-mono mt-1';
-            aiDetectConfidence.textContent = '识别网络超时，请手动输入读数';
+            const rawMsg = (err && err.message) || '未能自动提取读数，请手动输入';
+            let displayMsg = rawMsg;
+            if (rawMsg.includes('429') || rawMsg.includes('频繁')) {
+              displayMsg = 'API 接口请求频繁，请稍后或清除自定义 Key';
+            } else if (rawMsg.includes('400') || rawMsg.includes('无法解析')) {
+              displayMsg = '秤面照片未能解析，请对准屏幕重拍';
+            } else if (rawMsg.includes('AbortError') || rawMsg.includes('timeout') || rawMsg.includes('超时')) {
+              displayMsg = '云端识别超时，请手动输入斤数';
+            }
+            aiDetectConfidence.textContent = displayMsg;
           }
         }
       }
@@ -2410,17 +2363,12 @@
         });
       }
 
-      // Settings modal Token & Gemini Key listeners
+      // Settings modal GitHub token listener
       const inputUserGithubToken = document.getElementById('inputUserGithubToken');
       const btnSaveGithubToken = document.getElementById('btnSaveGithubToken');
-      const inputUserGeminiKey = document.getElementById('inputUserGeminiKey');
-      const btnSaveGeminiKey = document.getElementById('btnSaveGeminiKey');
 
       if (inputUserGithubToken) {
         inputUserGithubToken.value = localStorage.getItem('tirz_user_gh_token') || '';
-      }
-      if (inputUserGeminiKey) {
-        inputUserGeminiKey.value = typeof getEffectiveGeminiKey === 'function' ? getEffectiveGeminiKey() : '';
       }
 
       if (btnSaveGithubToken && inputUserGithubToken) {
@@ -2438,19 +2386,6 @@
         });
       }
 
-      if (btnSaveGeminiKey && inputUserGeminiKey) {
-        btnSaveGeminiKey.addEventListener('click', () => {
-          const val = inputUserGeminiKey.value.trim();
-          localStorage.setItem('tirz_gemini_api_key', val);
-          localStorage.setItem('gemini_api_key', val);
-          if (val) {
-            showToast('Gemini API Key 已保存，拍照即可自动识别');
-          } else {
-            showToast('已清除本地 Gemini Key');
-          }
-          updateSessionStatusUI(CloudStorageAdapter.sessionState);
-        });
-      }
     });
 
     // Auto-update Service Worker & ensure latest client code is active
@@ -2458,14 +2393,14 @@
       if ('caches' in window) {
         caches.keys().then(names => {
           for (let name of names) {
-            if (name !== 'tirz-tracker-v4.0') {
+            if (name !== 'tirz-tracker-v4.2') {
               caches.delete(name);
             }
           }
         });
       }
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/sw.js?v=4.0', { updateViaCache: 'none' })
+        navigator.serviceWorker.register('/sw.js?v=4.2', { updateViaCache: 'none' })
           .then((registration) => {
             registration.update();
             registration.onupdatefound = () => {

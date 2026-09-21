@@ -1,10 +1,12 @@
-// AI Scale Vision Analysis Route using Google Gemini Multimodal API
+// AI Scale Vision Analysis Route using Google Gemini Multimodal API.
+// The browser never supplies an API key: GEMINI_API_KEY must be a Worker Secret.
+
+const MAX_IMAGE_BASE64_LENGTH = 4_000_000;
+const UPSTREAM_TIMEOUT_MS = 8_000;
 
 function extractJson(text) {
   if (!text) return null;
-  try {
-    return JSON.parse(text.trim());
-  } catch {}
+  try { return JSON.parse(text.trim()); } catch {}
   const codeFenceMatch = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
   if (codeFenceMatch) {
     try { return JSON.parse(codeFenceMatch[1].trim()); } catch {}
@@ -15,154 +17,112 @@ function extractJson(text) {
     try { return JSON.parse(text.substring(firstBrace, lastBrace + 1)); } catch {}
   }
   const numMatch = text.match(/(\d{2,3}(?:\.\d{1,2})?)/);
-  if (numMatch) {
-    return { weight: parseFloat(numMatch[1]), unit: '斤' };
-  }
-  return null;
+  return numMatch ? { weight: parseFloat(numMatch[1]), unit: '斤' } : null;
+}
+
+function jsonResponse(payload, status, requestId) {
+  return new Response(JSON.stringify({ ...payload, requestId }), {
+    status,
+    headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', 'X-Request-ID': requestId }
+  });
+}
+
+function logEvent(level, event, fields) {
+  const line = JSON.stringify({ event, ...fields });
+  if (level === 'error') console.error(line);
+  else if (level === 'warn') console.warn(line);
+  else console.log(line);
 }
 
 export async function handleAIRoutes(request, env, url, session) {
-  const path = url.pathname;
-  const method = request.method;
+  if (url.pathname !== '/api/ai/analyze-scale' || request.method !== 'POST') return null;
 
-  if (path === '/api/ai/analyze-scale' && method === 'POST') {
-    let body;
-    try {
-      body = await request.json();
-    } catch {
-      return new Response(JSON.stringify({ error: 'INVALID_JSON', message: '请求格式不合法' }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' }
-      });
-    }
-
-    const { imageBase64 } = body;
-    if (!imageBase64 || typeof imageBase64 !== 'string') {
-      return new Response(JSON.stringify({ error: 'MISSING_IMAGE', message: '缺少图片数据' }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' }
-      });
-    }
-
-    const BUILTIN_GEMINI_KEY = typeof atob === 'function'
-      ? atob('QVEuQWI4Uk42SVBGdnlVcEJ6dGw0cHR2dUFrZTZXMkxhUzFjYjh3VXRvcnYwRjRZZjVWX2c=')
-      : (typeof Buffer !== 'undefined' ? Buffer.from('QVEuQWI4Uk42SVBGdnlVcEJ6dGw0cHR2dUFrZTZXMkxhUzFjYjh3VXRvcnYwRjRZZjVWX2c=', 'base64').toString() : '');
-    const apiKey = (body.apiKey && typeof body.apiKey === 'string' && body.apiKey.trim()) ||
-                   (env.GEMINI_API_KEY && env.GEMINI_API_KEY.trim()) ||
-                   BUILTIN_GEMINI_KEY;
-
-    if (!apiKey) {
-      return new Response(JSON.stringify({
-        error: 'NO_API_KEY',
-        message: '未接入 Gemini API Key，请在设置中配置'
-      }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' }
-      });
-    }
-
-    const mimeMatch = imageBase64.match(/^data:([^;]+);base64,/);
-    const mimeType = mimeMatch ? mimeMatch[1] : 'image/jpeg';
-    const pureBase64 = imageBase64.replace(/^data:[^;]+;base64,/, '').replace(/\s/g, '');
-
-    if (!pureBase64 || pureBase64.length < 100) {
-      return new Response(JSON.stringify({
-        error: 'INVALID_IMAGE',
-        message: '未获取到有效的秤面照片数据'
-      }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' }
-      });
-    }
-
-    const prompt = `You are a high-speed digital weight scale OCR engine. Look at the bathroom scale photo (including white or colored LED glowing digits under glass, LCD displays, and 7-segment numbers). Extract the weight numeric reading. Return ONLY a valid JSON: {"weight": number, "unit": "斤" or "kg", "confidence": "high"}. Example: {"weight": 168.5, "unit": "斤", "confidence": "high"}`;
-
-    const modelsToTry = [
-      'gemini-flash-lite-latest',
-      'gemini-3.1-flash-lite'
-    ];
-    const keysToTry = [apiKey];
-    if (BUILTIN_GEMINI_KEY && apiKey !== BUILTIN_GEMINI_KEY) {
-      keysToTry.push(BUILTIN_GEMINI_KEY);
-    }
-
-    let lastError = null;
-    for (const activeKey of keysToTry) {
-      for (const model of modelsToTry) {
-        try {
-          const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${activeKey}`;
-          const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 8000);
-          const res = await fetch(apiUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            signal: controller.signal,
-            body: JSON.stringify({
-              contents: [{
-                role: 'user',
-                parts: [
-                  { text: prompt },
-                  { inlineData: { mimeType: mimeType, data: pureBase64 } }
-                ]
-              }],
-              generationConfig: {
-                responseMimeType: 'application/json'
-              }
-            })
-          });
-          clearTimeout(timeoutId);
-
-          if (!res.ok) {
-            const errText = await res.text().catch(() => '');
-            lastError = new Error(`Gemini ${model} HTTP ${res.status}: ${errText}`);
-            continue;
-          }
-
-          const data = await res.json();
-          const textResponse = data.candidates?.[0]?.content?.parts?.[0]?.text;
-          if (!textResponse) {
-            lastError = new Error(`Gemini ${model} 返回内容为空`);
-            continue;
-          }
-
-          const parsed = extractJson(textResponse);
-          if (!parsed) {
-            lastError = new Error(`Gemini ${model} 返回非标准 JSON: ${textResponse.slice(0, 100)}`);
-            continue;
-          }
-
-          let wt = parsed.weight;
-          if (typeof wt === 'string') {
-            wt = parseFloat(wt.replace(/[^0-9.]/g, ''));
-          } else {
-            wt = Number(wt);
-          }
-
-          if (!isNaN(wt) && wt > 0) {
-            return new Response(JSON.stringify({
-              success: true,
-              weight: wt,
-              unit: parsed.unit || '斤',
-              confidence: parsed.confidence || 'high',
-              model: model
-            }), {
-              headers: { 'Content-Type': 'application/json' }
-            });
-          }
-        } catch (err) {
-          lastError = err;
-        }
-      }
-    }
-
-    return new Response(JSON.stringify({
-      error: 'AI_RECOGNITION_FAILED',
-      message: lastError ? lastError.message : '未能从秤面图像中识别出有效读数'
-    }), {
-      status: 502,
-      headers: { 'Content-Type': 'application/json' }
-    });
+  const requestId = request.headers.get('X-Request-ID') || crypto.randomUUID();
+  const startedAt = Date.now();
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    logEvent('warn', 'ai_request_rejected', { requestId, reason: 'invalid_json' });
+    return jsonResponse({ error: 'INVALID_JSON', message: '请求格式不合法' }, 400, requestId);
   }
 
-  return null;
+  const { imageBase64 } = body || {};
+  if (!imageBase64 || typeof imageBase64 !== 'string') {
+    logEvent('warn', 'ai_request_rejected', { requestId, reason: 'missing_image' });
+    return jsonResponse({ error: 'MISSING_IMAGE', message: '缺少图片数据' }, 400, requestId);
+  }
+
+  const mimeMatch = imageBase64.match(/^data:([^;]+);base64,/i);
+  const mimeType = (mimeMatch ? mimeMatch[1] : 'image/jpeg').toLowerCase();
+  const pureBase64 = imageBase64.replace(/^data:[^;]+;base64,/i, '').replace(/\s/g, '');
+  if (!/^image\/(?:jpeg|png|webp)$/.test(mimeType)) {
+    logEvent('warn', 'ai_request_rejected', { requestId, reason: 'unsupported_mime', mimeType });
+    return jsonResponse({ error: 'UNSUPPORTED_IMAGE_TYPE', message: '仅支持 JPG、PNG 或 WebP 图片' }, 415, requestId);
+  }
+  if (!pureBase64 || pureBase64.length < 100) {
+    logEvent('warn', 'ai_request_rejected', { requestId, reason: 'invalid_image', mimeType });
+    return jsonResponse({ error: 'INVALID_IMAGE', message: '未获取到有效的秤面照片数据' }, 400, requestId);
+  }
+  if (pureBase64.length > MAX_IMAGE_BASE64_LENGTH) {
+    logEvent('warn', 'ai_request_rejected', { requestId, reason: 'image_too_large', mimeType, base64Length: pureBase64.length });
+    return jsonResponse({ error: 'IMAGE_TOO_LARGE', message: '图片过大，请重新拍摄或压缩后上传' }, 413, requestId);
+  }
+
+  const apiKey = typeof env.GEMINI_API_KEY === 'string' ? env.GEMINI_API_KEY.trim() : '';
+  if (!apiKey) {
+    logEvent('error', 'ai_request_rejected', { requestId, reason: 'missing_worker_secret' });
+    return jsonResponse({ error: 'AI_NOT_CONFIGURED', message: '服务器尚未配置 Gemini API Key' }, 503, requestId);
+  }
+
+  logEvent('info', 'ai_request_started', { requestId, mimeType, imageBase64Length: pureBase64.length });
+  const prompt = `You are a high-speed digital weight scale OCR engine. Look at the bathroom scale photo (including white or colored LED glowing digits under glass, LCD displays, and 7-segment numbers). Extract the weight numeric reading. Return ONLY a valid JSON: {"weight": number, "unit": "斤" or "kg", "confidence": "high"}. Example: {"weight": 168.5, "unit": "斤", "confidence": "high"}`;
+  const modelsToTry = ['gemini-flash-lite-latest', 'gemini-3.1-flash-lite'];
+  let lastError = null;
+  let lastStatus = 502;
+
+  for (const model of modelsToTry) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), UPSTREAM_TIMEOUT_MS);
+    const modelStartedAt = Date.now();
+    try {
+      const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`;
+      const res = await fetch(apiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
+        body: JSON.stringify({
+          contents: [{ role: 'user', parts: [{ text: prompt }, { inlineData: { mimeType, data: pureBase64 } }] }],
+          generationConfig: { responseMimeType: 'application/json' }
+        })
+      });
+      lastStatus = res.status;
+      if (!res.ok) {
+        lastError = new Error(`Gemini upstream HTTP ${res.status}`);
+        logEvent('warn', 'ai_upstream_error', { requestId, model, status: res.status, durationMs: Date.now() - modelStartedAt });
+        continue;
+      }
+      const data = await res.json();
+      const parsed = extractJson(data.candidates?.[0]?.content?.parts?.[0]?.text);
+      let weight = parsed?.weight;
+      weight = typeof weight === 'string' ? parseFloat(weight.replace(/[^0-9.]/g, '')) : Number(weight);
+      if (!Number.isFinite(weight) || weight <= 0) {
+        lastError = new Error('Gemini response did not contain a valid weight');
+        logEvent('warn', 'ai_upstream_error', { requestId, model, status: 200, reason: 'invalid_model_payload', durationMs: Date.now() - modelStartedAt });
+        continue;
+      }
+      logEvent('info', 'ai_request_completed', { requestId, model, durationMs: Date.now() - startedAt, hasWeight: true });
+      return jsonResponse({ success: true, weight, unit: parsed.unit || '斤', confidence: parsed.confidence || 'high', model }, 200, requestId);
+    } catch (err) {
+      lastError = err;
+      logEvent('warn', 'ai_upstream_error', { requestId, model, reason: err?.name === 'AbortError' ? 'timeout' : 'network_error', durationMs: Date.now() - modelStartedAt });
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  }
+
+  const timedOut = lastError?.name === 'AbortError';
+  const error = timedOut ? 'AI_UPSTREAM_TIMEOUT' : (lastStatus === 401 || lastStatus === 403 ? 'AI_AUTH_FAILED' : 'AI_RECOGNITION_FAILED');
+  logEvent('error', 'ai_request_failed', { requestId, error, upstreamStatus: lastStatus, durationMs: Date.now() - startedAt });
+  return jsonResponse({ error, message: timedOut ? '识别服务响应超时，请稍后重试' : '识别服务暂时不可用，请稍后重试' }, timedOut ? 504 : 502, requestId);
 }
