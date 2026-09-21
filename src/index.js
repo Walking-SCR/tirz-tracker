@@ -1,4 +1,4 @@
-import { getAuthSession } from './auth.js';
+import { getAuthSession, getTrustedDevice } from './auth.js';
 import { handleAuthRoutes } from './api/authRoutes.js';
 import { handleRecordRoutes } from './api/recordRoutes.js';
 import { handleDoseRoutes } from './api/doseRoutes.js';
@@ -93,6 +93,12 @@ export default {
 
     // 4. Special alias: /setup opens the app with setup flag
     if (path === '/setup') {
+      const session = await getAuthSession(request, reqEnv);
+      const device = await getTrustedDevice(request, reqEnv);
+      if (session || device) {
+        return Response.redirect(`${url.origin}/`, 302);
+      }
+
       if (env.ASSETS) {
         try {
           const assetUrl = new URL('/index.html', request.url);
@@ -106,6 +112,14 @@ export default {
 
     // 5. Root & Static Assets fallback
     if (path === '/' || path === '/index.html') {
+      if (url.searchParams.get('mode') === 'setup') {
+        const session = await getAuthSession(request, reqEnv);
+        const device = await getTrustedDevice(request, reqEnv);
+        if (session || device) {
+          return Response.redirect(`${url.origin}/`, 302);
+        }
+      }
+
       if (env.ASSETS) {
         try {
           const res = await env.ASSETS.fetch(request);

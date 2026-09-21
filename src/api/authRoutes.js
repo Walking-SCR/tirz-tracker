@@ -4,7 +4,8 @@ import {
   signToken,
   buildCookieHeader,
   clearCookieHeader,
-  generateDeviceId
+  generateDeviceId,
+  parseCookies
 } from '../auth.js';
 
 export async function handleAuthRoutes(request, env, url) {
@@ -15,16 +16,44 @@ export async function handleAuthRoutes(request, env, url) {
   if (path === '/api/auth/status' && method === 'GET') {
     const session = await getAuthSession(request, env);
     const device = await getTrustedDevice(request, env);
+    const headers = new Headers({ 'Content-Type': 'application/json' });
+
+    // If authenticated via header and cookies are missing, auto-heal cookies
+    if (session) {
+      const cookies = parseCookies(request);
+      if (!cookies['tirz_session'] || !cookies['tirz_device']) {
+        const nowSeconds = Math.floor(Date.now() / 1000);
+        const signingKey = env.AUTH_SIGNING_KEY || 'tirz-fallback-auth-key-super-secret-signing-32chars';
+        const sessionPayload = {
+          email: session.email,
+          deviceId: session.deviceId || 'dev-healed',
+          type: 'session',
+          iat: nowSeconds,
+          exp: nowSeconds + 30 * 24 * 60 * 60
+        };
+        const sessionToken = await signToken(sessionPayload, signingKey);
+        headers.append('Set-Cookie', buildCookieHeader('tirz_session', sessionToken, 30 * 24 * 60 * 60));
+
+        const devicePayload = {
+          email: session.email,
+          deviceId: session.deviceId || 'dev-healed',
+          type: 'device',
+          iat: nowSeconds,
+          exp: nowSeconds + 180 * 24 * 60 * 60
+        };
+        const deviceToken = await signToken(devicePayload, signingKey);
+        headers.append('Set-Cookie', buildCookieHeader('tirz_device', deviceToken, 180 * 24 * 60 * 60));
+      }
+    }
+
     return new Response(JSON.stringify({
       authenticated: !!session,
-      email: session ? session.email : null,
+      email: session ? session.email : (device ? device.email : null),
       isDeviceBound: !!device,
       allowedEmailHint: env.ALLOWED_EMAIL ? env.ALLOWED_EMAIL.replace(/(.{2})(.*)(@.*)/, '$1***$3') : null,
       hasGithubToken: !!(env.GITHUB_TOKEN && env.GITHUB_TOKEN.trim()),
       hasGeminiKey: !!(env.GEMINI_API_KEY && env.GEMINI_API_KEY.trim())
-    }), {
-      headers: { 'Content-Type': 'application/json' }
-    });
+    }), { headers });
   }
 
   // 2. POST /api/auth/login
@@ -58,21 +87,19 @@ export async function handleAuthRoutes(request, env, url) {
     let device = await getTrustedDevice(request, env);
     const nowSeconds = Math.floor(Date.now() / 1000);
     const headers = new Headers({ 'Content-Type': 'application/json' });
+    const deviceId = (device && device.deviceId) || generateDeviceId();
 
-    // If device is not yet bound, seamlessly bind for authorized owner
-    if (!device) {
-      const newDeviceId = generateDeviceId();
-      const devicePayload = {
-        email: inputEmail,
-        deviceId: newDeviceId,
-        type: 'device',
-        iat: nowSeconds,
-        exp: nowSeconds + 180 * 24 * 60 * 60 // 180 days
-      };
-      const deviceToken = await signToken(devicePayload, signingKey);
-      headers.append('Set-Cookie', buildCookieHeader('tirz_device', deviceToken, 180 * 24 * 60 * 60));
-      device = { deviceId: newDeviceId };
-    }
+    // Issue/renew 180-day Device Token
+    const devicePayload = {
+      email: inputEmail,
+      deviceId: deviceId,
+      type: 'device',
+      iat: nowSeconds,
+      exp: nowSeconds + 180 * 24 * 60 * 60 // 180 days
+    };
+    const deviceToken = await signToken(devicePayload, signingKey);
+    headers.append('Set-Cookie', buildCookieHeader('tirz_device', deviceToken, 180 * 24 * 60 * 60));
+    device = { deviceId: deviceId };
 
     // Issue Session Cookie (30 days)
     const sessionPayload = {
@@ -89,6 +116,8 @@ export async function handleAuthRoutes(request, env, url) {
       success: true,
       email: inputEmail,
       isDeviceBound: true,
+      sessionToken: sessionToken,
+      deviceToken: deviceToken,
       message: '安全授权并登录成功！已为您建立180天受信任连接'
     }), { headers });
   }
@@ -178,6 +207,10 @@ export async function handleAuthRoutes(request, env, url) {
 
     return new Response(JSON.stringify({
       success: true,
+      email: inputEmail,
+      isDeviceBound: true,
+      sessionToken: sessionToken,
+      deviceToken: deviceToken,
       message: '设备授权绑定成功！已为您建立长期受信任连接'
     }), { headers });
   }

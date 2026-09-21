@@ -109,13 +109,49 @@ function getSigningKey(env) {
   return env.AUTH_SIGNING_KEY || 'tirz-fallback-auth-key-super-secret-signing-32chars';
 }
 
-// Verify user session from request (supports session cookie OR 180-day trusted device cookie)
+// Verify user session from request (supports Authorization header, X-Device-Token header, session cookie OR 180-day trusted device cookie)
 export async function getAuthSession(request, env) {
-  const cookies = parseCookies(request);
   const signingKey = getSigningKey(env);
   const allowed = (env.ALLOWED_EMAIL || 'walkingscr@gmail.com').trim().toLowerCase();
 
-  // 1. Check direct session cookie
+  // 1. Check Authorization header (Bearer <token>)
+  const authHeader = request.headers.get('Authorization') || '';
+  if (authHeader.startsWith('Bearer ')) {
+    const bearerToken = authHeader.substring(7).trim();
+    if (bearerToken) {
+      const payload = await verifyToken(bearerToken, signingKey);
+      if (payload && (payload.type === 'session' || payload.type === 'device')) {
+        if (!allowed || payload.email.toLowerCase() === allowed) {
+          return {
+            email: payload.email,
+            deviceId: payload.deviceId,
+            type: 'session',
+            isFromHeader: true
+          };
+        }
+      }
+    }
+  }
+
+  // 2. Check X-Device-Token header
+  const devHeader = request.headers.get('X-Device-Token');
+  if (devHeader) {
+    const devPayload = await verifyToken(devHeader.trim(), signingKey);
+    if (devPayload && devPayload.type === 'device') {
+      if (!allowed || devPayload.email.toLowerCase() === allowed) {
+        return {
+          email: devPayload.email,
+          deviceId: devPayload.deviceId,
+          type: 'session',
+          isFromDeviceHeader: true
+        };
+      }
+    }
+  }
+
+  const cookies = parseCookies(request);
+
+  // 3. Check direct session cookie
   const sessionToken = cookies['tirz_session'];
   if (sessionToken) {
     const payload = await verifyToken(sessionToken, signingKey);
@@ -126,7 +162,7 @@ export async function getAuthSession(request, env) {
     }
   }
 
-  // 2. Fallback to 180-day trusted device cookie so refresh never forces re-login
+  // 4. Fallback to 180-day trusted device cookie so refresh never forces re-login
   const deviceToken = cookies['tirz_device'];
   if (deviceToken) {
     const devPayload = await verifyToken(deviceToken, signingKey);
@@ -145,18 +181,45 @@ export async function getAuthSession(request, env) {
   return null;
 }
 
-// Verify trusted device cookie from request
+// Verify trusted device from request (supports X-Device-Token, Authorization header, or tirz_device cookie)
 export async function getTrustedDevice(request, env) {
+  const signingKey = getSigningKey(env);
+  const allowed = (env.ALLOWED_EMAIL || 'walkingscr@gmail.com').trim().toLowerCase();
+
+  // 1. Check X-Device-Token header
+  const devHeader = request.headers.get('X-Device-Token');
+  if (devHeader) {
+    const payload = await verifyToken(devHeader.trim(), signingKey);
+    if (payload && payload.type === 'device') {
+      if (!allowed || payload.email.toLowerCase() === allowed) {
+        return payload;
+      }
+    }
+  }
+
+  // 2. Check Authorization header
+  const authHeader = request.headers.get('Authorization') || '';
+  if (authHeader.startsWith('Bearer ')) {
+    const token = authHeader.substring(7).trim();
+    if (token) {
+      const payload = await verifyToken(token, signingKey);
+      if (payload && payload.type === 'device') {
+        if (!allowed || payload.email.toLowerCase() === allowed) {
+          return payload;
+        }
+      }
+    }
+  }
+
+  // 3. Check Cookie
   const cookies = parseCookies(request);
   const deviceToken = cookies['tirz_device'];
   if (!deviceToken) return null;
 
-  const signingKey = getSigningKey(env);
   const payload = await verifyToken(deviceToken, signingKey);
   if (!payload || payload.type !== 'device') return null;
 
   // Verify email matches allowed email
-  const allowed = (env.ALLOWED_EMAIL || 'walkingscr@gmail.com').trim().toLowerCase();
   if (allowed && payload.email.toLowerCase() !== allowed) {
     return null;
   }

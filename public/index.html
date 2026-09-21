@@ -604,6 +604,13 @@
         const headers = {};
         const userToken = localStorage.getItem('tirz_user_gh_token');
         if (userToken) headers['X-GitHub-Token'] = userToken.trim();
+
+        const authToken = localStorage.getItem('tirz_auth_token') || localStorage.getItem('tirz_device_token');
+        if (authToken) headers['Authorization'] = `Bearer ${authToken.trim()}`;
+
+        const deviceToken = localStorage.getItem('tirz_device_token');
+        if (deviceToken) headers['X-Device-Token'] = deviceToken.trim();
+
         return headers;
       },
 
@@ -625,6 +632,9 @@
               hasGeminiKey: !!data.hasGeminiKey,
               isLocalDemo: false
             };
+            if (data.authenticated || data.isDeviceBound) {
+              localStorage.setItem('tirz_device_bound', 'true');
+            }
             return this.sessionState;
           }
         } catch (e) {
@@ -648,6 +658,9 @@
           err.code = data.error;
           throw err;
         }
+        if (data.sessionToken) localStorage.setItem('tirz_auth_token', data.sessionToken);
+        if (data.deviceToken) localStorage.setItem('tirz_device_token', data.deviceToken);
+        localStorage.setItem('tirz_device_bound', 'true');
         await this.checkAuth();
         return data;
       },
@@ -665,6 +678,9 @@
           err.code = data.error;
           throw err;
         }
+        if (data.sessionToken) localStorage.setItem('tirz_auth_token', data.sessionToken);
+        if (data.deviceToken) localStorage.setItem('tirz_device_token', data.deviceToken);
+        localStorage.setItem('tirz_device_bound', 'true');
         await this.checkAuth();
         return data;
       },
@@ -676,6 +692,9 @@
             credentials: 'same-origin'
           });
         } catch (e) {}
+        localStorage.removeItem('tirz_auth_token');
+        localStorage.removeItem('tirz_device_token');
+        localStorage.removeItem('tirz_device_bound');
         this.sessionState = { authenticated: false, email: null, isDeviceBound: false, isLocalDemo: false };
       },
 
@@ -993,24 +1012,37 @@
 
       refreshAllUI();
 
-      // Check URL for ?mode=setup or /setup
-      const urlParams = new URLSearchParams(window.location.search);
-      if (urlParams.get('mode') === 'setup' || urlParams.has('setup')) {
-        const modal = document.getElementById('deviceSetupModal');
-        if (modal) modal.classList.remove('hidden');
-      }
-
       // Check session auth status
       try {
         const status = await CloudStorageAdapter.checkAuth();
         updateSessionStatusUI(status);
 
-        if (status.authenticated) {
-          const authModal = document.getElementById('authModal');
+        const urlParams = new URLSearchParams(window.location.search);
+        const hasSetupQuery = urlParams.get('mode') === 'setup' || urlParams.has('setup') || window.location.pathname === '/setup';
+        const isBoundOrAuthed = status.authenticated || status.isDeviceBound || localStorage.getItem('tirz_device_bound') === 'true';
+
+        const deviceSetupModal = document.getElementById('deviceSetupModal');
+        const authModal = document.getElementById('authModal');
+
+        if (isBoundOrAuthed) {
+          // Device is already bound or authenticated: strictly ensure setup modal is closed
+          if (deviceSetupModal) deviceSetupModal.classList.add('hidden');
           if (authModal) authModal.classList.add('hidden');
+
+          // Clean URL so refresh / PWA launch never triggers setup mode again
+          if (hasSetupQuery && window.history.replaceState) {
+            try {
+              window.history.replaceState({}, document.title, window.location.origin + '/');
+            } catch (e) {}
+          }
+        } else if (hasSetupQuery) {
+          // Only show setup modal on a truly unauthenticated/unbound device with explicit setup query
+          if (deviceSetupModal) deviceSetupModal.classList.remove('hidden');
+        }
+
+        if (status.authenticated) {
           const emailDisplay = document.getElementById('sessionUserEmail');
           if (emailDisplay && status.email) emailDisplay.textContent = status.email;
-
           await syncWithCloud(true);
         } else {
           // If not authenticated, still try to fetch static /data/records.json to ensure data is loaded
@@ -1906,6 +1938,11 @@
       if (btnCloseSetupModal && deviceSetupModal) {
         btnCloseSetupModal.addEventListener('click', () => {
           deviceSetupModal.classList.add('hidden');
+          if (window.history.replaceState) {
+            try {
+              window.history.replaceState({}, document.title, window.location.origin + '/');
+            } catch (e) {}
+          }
           if (!CloudStorageAdapter.isAuthenticated() && authModal) {
             authModal.classList.remove('hidden');
           }
@@ -1936,6 +1973,12 @@
             await CloudStorageAdapter.login(email);
             showToast('安全验证通过！已成功建立180天受信任连接');
             if (authModal) authModal.classList.add('hidden');
+            if (deviceSetupModal) deviceSetupModal.classList.add('hidden');
+            if (window.history.replaceState) {
+              try {
+                window.history.replaceState({}, document.title, window.location.origin + '/');
+              } catch (e) {}
+            }
             updateSessionStatusUI(CloudStorageAdapter.sessionState);
             await syncWithCloud(true);
           } catch (err) {
@@ -1978,6 +2021,11 @@
             showToast('设备绑定成功！已为您建立180天受信任连接');
             if (deviceSetupModal) deviceSetupModal.classList.add('hidden');
             if (authModal) authModal.classList.add('hidden');
+            if (window.history.replaceState) {
+              try {
+                window.history.replaceState({}, document.title, window.location.origin + '/');
+              } catch (e) {}
+            }
             updateSessionStatusUI(CloudStorageAdapter.sessionState);
             await syncWithCloud(true);
           } catch (err) {
