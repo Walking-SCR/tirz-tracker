@@ -9,7 +9,8 @@ import { getFallbackHtml } from './fallbackHtml.js';
 const ALLOWED_EXTERNAL_ORIGINS = new Set(['https://walking-scr.github.io']);
 
 function isAllowedOrigin(origin, request) {
-  if (!origin || origin === 'null' || origin.startsWith('file://')) return false;
+  if (!origin) return false;
+  if (origin === 'null' || origin.startsWith('file://')) return true;
   try {
     return origin === new URL(request.url).origin || ALLOWED_EXTERNAL_ORIGINS.has(origin);
   } catch {
