@@ -1471,6 +1471,13 @@
     document.addEventListener('DOMContentLoaded', () => {
       loadData();
 
+      if (sessionStorage.getItem('tirz_reloaded_from_resume') === 'true') {
+        sessionStorage.removeItem('tirz_reloaded_from_resume');
+        setTimeout(() => {
+          showToast('已为您刷新到最新状态');
+        }, 300);
+      }
+
       // Top Header Refresh Button
       const btnHeaderRefresh = document.getElementById('btnHeaderRefresh');
       const headerRefreshIcon = document.getElementById('headerRefreshIcon');
@@ -1694,8 +1701,45 @@
         }
       }
 
+      // ==========================================
+      // iOS PWA & Standalone Auto-Refresh on Re-open
+      // ==========================================
+      let isMediaSelecting = false;
+      let hiddenTimestamp = 0;
+      let isAppReloading = false;
+
+      function isUserInteractingWithModal() {
+        if (isMediaSelecting) return true;
+        const activeModalIds = ['confirmModal', 'doseModal', 'scannerOverlay'];
+        return activeModalIds.some(id => {
+          const el = document.getElementById(id);
+          return el && !el.classList.contains('hidden');
+        });
+      }
+
+      function handleAppResume(source = '') {
+        if (isAppReloading) return;
+
+        // If user is actively taking photo or has an unsubmitted weight modal open, don't wipe their form!
+        if (isUserInteractingWithModal()) {
+          console.log(`[PWA Lifecycle] User interacting with form/camera, background sync instead of full reload (${source})`);
+          syncWithCloud(true);
+          return;
+        }
+
+        console.log(`[PWA Lifecycle] Re-opened from background (${source}), reloading page...`);
+        isAppReloading = true;
+        sessionStorage.setItem('tirz_reloaded_from_resume', 'true');
+        window.location.reload();
+      }
+
+      if (btnPickGallery) btnPickGallery.addEventListener('click', () => { isMediaSelecting = true; });
+      if (btnPickCamera) btnPickCamera.addEventListener('click', () => { isMediaSelecting = true; });
+
       if (scaleGalleryInput) {
+        scaleGalleryInput.addEventListener('click', () => { isMediaSelecting = true; });
         scaleGalleryInput.addEventListener('change', async (e) => {
+          isMediaSelecting = false;
           const file = e.target.files && e.target.files[0];
           if (file) await handleScaleImageUpload(file);
           scaleGalleryInput.value = '';
@@ -1703,12 +1747,45 @@
       }
 
       if (scaleCameraInput) {
+        scaleCameraInput.addEventListener('click', () => { isMediaSelecting = true; });
         scaleCameraInput.addEventListener('change', async (e) => {
+          isMediaSelecting = false;
           const file = e.target.files && e.target.files[0];
           if (file) await handleScaleImageUpload(file);
           scaleCameraInput.value = '';
         });
       }
+
+      window.addEventListener('focus', () => {
+        // If file picker or camera dialog was dismissed/cancelled
+        setTimeout(() => { isMediaSelecting = false; }, 1000);
+      });
+
+      // 1. Visibility Change: fires when iOS PWA / Safari tab is switched to background and resumed
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'hidden') {
+          hiddenTimestamp = Date.now();
+        } else if (document.visibilityState === 'visible') {
+          const now = Date.now();
+          const elapsed = hiddenTimestamp ? (now - hiddenTimestamp) : 0;
+          hiddenTimestamp = 0;
+
+          // If away for more than 1.5 seconds (indicating user left and re-opened the app)
+          if (elapsed >= 1500) {
+            handleAppResume(`visibilitychange:${elapsed}ms`);
+          } else {
+            // Brief pause (e.g. system banner or quick gesture), do silent sync
+            syncWithCloud(true);
+          }
+        }
+      });
+
+      // 2. BFCache restoration (when iOS restores the frozen page from Back-Forward Cache)
+      window.addEventListener('pageshow', (event) => {
+        if (event.persisted) {
+          handleAppResume('pageshow:persisted');
+        }
+      });
 
       // Manual Add Button
       const btnManualAdd = document.getElementById('btnManualAdd');
