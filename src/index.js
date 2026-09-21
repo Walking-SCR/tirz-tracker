@@ -21,7 +21,8 @@ function addSecurityHeaders(response, request = null) {
   }
 
   const contentType = newHeaders.get('Content-Type') || '';
-  if (contentType.includes('text/html')) {
+  const reqUrl = request ? new URL(request.url).pathname : '';
+  if (contentType.includes('text/html') || reqUrl.endsWith('sw.js') || reqUrl.endsWith('manifest.json')) {
     newHeaders.set('Cache-Control', 'no-cache, no-store, must-revalidate');
     newHeaders.set('Pragma', 'no-cache');
     newHeaders.set('Expires', '0');

@@ -120,7 +120,7 @@
         <div class="min-w-0">
           <div class="flex items-center gap-1.5 whitespace-nowrap">
             <h1 class="text-xs font-black tracking-wider text-white">TIRZEPATIDE</h1>
-            <span class="text-[9px] px-1 py-0.2 rounded bg-cyberNeon/15 text-cyberNeon font-mono border border-cyberNeon/30 whitespace-nowrap">v2.4</span>
+            <span class="text-[9px] px-1 py-0.2 rounded bg-cyberNeon/15 text-cyberNeon font-mono border border-cyberNeon/30 whitespace-nowrap">v2.6</span>
           </div>
           <p class="text-[9px] font-mono text-cyberTextDim whitespace-nowrap truncate">替尔泊肽 · 生物代谢测重监测站</p>
         </div>
@@ -1025,11 +1025,11 @@
 
       if (ghBadge) {
         if (state.hasGithubToken || hasLocalGh) {
-          ghBadge.textContent = '已连接';
+          ghBadge.textContent = '已连接 (云端就绪)';
           ghBadge.className = 'text-[9px] text-cyberNeon font-bold';
         } else {
-          ghBadge.textContent = '未连接 (需配置)';
-          ghBadge.className = 'text-[9px] text-amber-400 font-bold';
+          ghBadge.textContent = '已就绪 (本地模式)';
+          ghBadge.className = 'text-[9px] text-cyberCyan font-bold';
         }
       }
       if (geminiBadge) {
@@ -1571,7 +1571,7 @@
     };
 
     // Client image compression to WebP (preserving scale LCD digits)
-    async function compressScaleImage(file, maxDimension = 800, quality = 0.72) {
+    async function compressScaleImage(file, maxDimension = 640, quality = 0.70) {
       return new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = (e) => {
@@ -2405,6 +2405,28 @@
         });
       }
     });
+
+    // Auto-update Service Worker & ensure latest client code is active
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' })
+          .then((registration) => {
+            registration.update();
+            registration.onupdatefound = () => {
+              const installingWorker = registration.installing;
+              if (installingWorker) {
+                installingWorker.onstatechange = () => {
+                  if (installingWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                    console.log('New update available, reloading for fresh code...');
+                    window.location.reload();
+                  }
+                };
+              }
+            };
+          })
+          .catch((err) => console.warn('SW registration error:', err));
+      });
+    }
   </script>
 </body>
 </html>

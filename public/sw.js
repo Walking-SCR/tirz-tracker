@@ -1,5 +1,5 @@
 // Service Worker for Tirzepatide Tracker V2 PWA (Static-Only Cache)
-const CACHE_NAME = 'tirz-tracker-v2.6';
+const CACHE_NAME = 'tirz-tracker-v3.0';
 const STATIC_ASSETS = [
   './',
   './index.html',
@@ -38,6 +38,20 @@ self.addEventListener('fetch', (event) => {
   // STRICT PRIVACY RULE: NEVER cache any /api/* routes (records, photos, auth)
   if (url.pathname.startsWith('/api/')) {
     return; // Pass through to network
+  }
+
+  // Network-First for HTML navigation to guarantee the latest version is loaded on every device
+  if (event.request.mode === 'navigate' || url.pathname === '/' || url.pathname.endsWith('/index.html')) {
+    event.respondWith(
+      fetch(event.request).then((networkResponse) => {
+        if (networkResponse && networkResponse.status === 200) {
+          const clone = networkResponse.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+        }
+        return networkResponse;
+      }).catch(() => caches.match(event.request))
+    );
+    return;
   }
 
   // Runtime cache for static CDN libraries (Tailwind, Chart.js, Phosphor icons)
