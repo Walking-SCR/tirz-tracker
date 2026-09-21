@@ -76,7 +76,7 @@ test('returns the normalized weight from the Gemini response', async () => {
   }
 });
 
-test('disables thinking budget and limits output tokens for minimum latency', async () => {
+test('limits generation output for minimum latency', async () => {
   const originalFetch = globalThis.fetch;
   let sentConfig = null;
   globalThis.fetch = async (_input, init) => {
@@ -92,7 +92,7 @@ test('disables thinking budget and limits output tokens for minimum latency', as
     assert.equal(response.status, 200);
     assert.equal(sentConfig.temperature, 0);
     assert.equal(sentConfig.maxOutputTokens, 32);
-    assert.equal(sentConfig.thinkingConfig?.thinkingBudget, 0);
+    assert.equal(sentConfig.thinkingConfig, undefined);
   } finally {
     globalThis.fetch = originalFetch;
   }

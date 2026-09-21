@@ -98,32 +98,16 @@ export async function handleAIRoutes(request, env, url, session) {
         generationConfig: {
           responseMimeType: 'application/json',
           temperature: 0,
-          maxOutputTokens: 32,
-          thinkingConfig: { thinkingBudget: 0 }
+          maxOutputTokens: 32
         }
       };
 
-      let res = await fetch(apiUrl, {
+      const res = await fetch(apiUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         signal: controller.signal,
         body: JSON.stringify(payload)
       });
-
-      // Auto-fallback: if model returns 400 due to thinkingConfig, retry immediately without it
-      if (res.status === 400) {
-        const errCloned = res.clone();
-        const errTxt = await errCloned.text().catch(() => '');
-        if (/thinkingConfig|thinking_config|thinkingBudget/i.test(errTxt)) {
-          delete payload.generationConfig.thinkingConfig;
-          res = await fetch(apiUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            signal: controller.signal,
-            body: JSON.stringify(payload)
-          });
-        }
-      }
 
       lastStatus = res.status;
       if (!res.ok) {
