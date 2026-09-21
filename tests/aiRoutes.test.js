@@ -76,6 +76,28 @@ test('returns the normalized weight from the Gemini response', async () => {
   }
 });
 
+test('passes HEIC images through to Gemini without requiring browser conversion', async () => {
+  const originalFetch = globalThis.fetch;
+  let sentMimeType = '';
+  globalThis.fetch = async (_input, init) => {
+    const payload = JSON.parse(init.body);
+    sentMimeType = payload.contents[0].parts[1].inlineData.mimeType;
+    return new Response(JSON.stringify({
+      candidates: [{ content: { parts: [{ text: '{"weight":169.5,"unit":"斤","confidence":"high"}' }] } }]
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  };
+
+  try {
+    const response = await handleAIRoutes(request({ imageBase64: imageBase64.replace('image/jpeg', 'image/heic') }), { GEMINI_API_KEY: 'server-key' }, url);
+    const body = await json(response);
+    assert.equal(response.status, 200);
+    assert.equal(body.weight, 169.5);
+    assert.equal(sentMimeType, 'image/heic');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test('maps Gemini authentication failures to an actionable error', async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async () => new Response(JSON.stringify({ error: { message: 'unauthorized' } }), { status: 401 });

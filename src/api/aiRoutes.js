@@ -54,11 +54,13 @@ export async function handleAIRoutes(request, env, url, session) {
   }
 
   const mimeMatch = imageBase64.match(/^data:([^;]+);base64,/i);
-  const mimeType = (mimeMatch ? mimeMatch[1] : 'image/jpeg').toLowerCase();
+  const rawMimeType = (mimeMatch ? mimeMatch[1] : 'image/jpeg').toLowerCase();
+  // Gemini accepts both JPEG spellings, but image/jpeg is the canonical value.
+  const mimeType = rawMimeType === 'image/jpg' ? 'image/jpeg' : rawMimeType;
   const pureBase64 = imageBase64.replace(/^data:[^;]+;base64,/i, '').replace(/\s/g, '');
-  if (!/^image\/(?:jpeg|png|webp)$/.test(mimeType)) {
+  if (!/^image\/(?:jpeg|png|webp|heic|heif)$/.test(mimeType)) {
     logEvent('warn', 'ai_request_rejected', { requestId, reason: 'unsupported_mime', mimeType });
-    return jsonResponse({ error: 'UNSUPPORTED_IMAGE_TYPE', message: '仅支持 JPG、PNG 或 WebP 图片' }, 415, requestId);
+    return jsonResponse({ error: 'UNSUPPORTED_IMAGE_TYPE', message: '仅支持 JPG、PNG、WebP、HEIC 或 HEIF 图片' }, 415, requestId);
   }
   if (!pureBase64 || pureBase64.length < 100) {
     logEvent('warn', 'ai_request_rejected', { requestId, reason: 'invalid_image', mimeType });
@@ -77,10 +79,13 @@ export async function handleAIRoutes(request, env, url, session) {
 
   logEvent('info', 'ai_request_started', { requestId, mimeType, imageBase64Length: pureBase64.length });
   const prompt = `You are a high-speed digital weight scale OCR engine. Look at the bathroom scale photo (including white or colored LED glowing digits under glass, LCD displays, and 7-segment numbers). Extract the weight numeric reading. Return ONLY a valid JSON: {"weight": number, "unit": "斤" or "kg", "confidence": "high"}. Example: {"weight": 168.5, "unit": "斤", "confidence": "high"}`;
-  const modelsToTry = ['gemini-flash-lite-latest', 'gemini-3.1-flash-lite'];
+  // The numbered model is currently the more reliable first choice. Keep the
+  // alias as a fallback for transient model/region failures.
+  const modelsToTry = ['gemini-3.1-flash-lite', 'gemini-flash-lite-latest'];
   let lastError = null;
   let lastStatus = 502;
   const upstreamStatuses = [];
+  let timeoutCount = 0;
 
   for (const model of modelsToTry) {
     const controller = new AbortController();
@@ -129,16 +134,21 @@ export async function handleAIRoutes(request, env, url, session) {
       return jsonResponse({ success: true, weight, unit: parsed.unit || '斤', confidence: parsed.confidence || 'high', model }, 200, requestId);
     } catch (err) {
       lastError = err;
-      logEvent('warn', 'ai_upstream_error', { requestId, model, reason: err?.name === 'AbortError' ? 'timeout' : 'network_error', durationMs: Date.now() - modelStartedAt });
+      const timedOut = err?.name === 'AbortError';
+      if (timedOut) timeoutCount += 1;
+      logEvent('warn', 'ai_upstream_error', { requestId, model, reason: timedOut ? 'timeout' : 'network_error', durationMs: Date.now() - modelStartedAt });
     } finally {
       clearTimeout(timeoutId);
     }
   }
 
-  const timedOut = lastError?.name === 'AbortError';
+  const timedOut = timeoutCount === modelsToTry.length;
   const authFailed = upstreamStatuses.some(status => status === 401 || status === 403);
   const rateLimited = upstreamStatuses.includes(429);
-  const badRequest = upstreamStatuses.includes(400);
+  // A single 400 alongside a timeout/network error is not enough evidence that
+  // the image is invalid; otherwise a transient fallback failure is misreported
+  // to the user as an image-format problem.
+  const badRequest = upstreamStatuses.length > 0 && upstreamStatuses.every(status => status === 400) && timeoutCount === 0;
   const error = timedOut
     ? 'AI_UPSTREAM_TIMEOUT'
     : authFailed

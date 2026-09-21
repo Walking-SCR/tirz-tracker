@@ -1715,9 +1715,31 @@
 
     function readFileAsDataUrl(file, resolve) {
       const reader = new FileReader();
-      reader.onload = (e) => resolve(e.target.result);
       reader.onerror = () => resolve('');
+      // iOS can leave File.type empty for camera-roll HEIC files. Preserve the
+      // real MIME type instead of sending an opaque/octet-stream data URL.
+      const inferredMime = inferImageMimeType(file);
+      reader.onload = (e) => {
+        let dataUrl = String(e.target.result || '');
+        if (inferredMime && /^data:(?:application\/octet-stream|application\/binary|);base64,/i.test(dataUrl)) {
+          dataUrl = dataUrl.replace(/^data:[^;]*;base64,/i, `data:${inferredMime};base64,`);
+        }
+        resolve(dataUrl);
+      };
       reader.readAsDataURL(file);
+    }
+
+    function inferImageMimeType(file) {
+      const declared = String(file?.type || '').toLowerCase();
+      if (/^image\/(?:jpeg|jpg|png|webp|heic|heif)$/.test(declared)) {
+        return declared === 'image/jpg' ? 'image/jpeg' : declared;
+      }
+      const name = String(file?.name || '').toLowerCase();
+      if (/\.hei[cf]$/.test(name)) return name.endsWith('.heif') ? 'image/heif' : 'image/heic';
+      if (/\.jpe?g$/.test(name)) return 'image/jpeg';
+      if (/\.png$/.test(name)) return 'image/png';
+      if (/\.webp$/.test(name)) return 'image/webp';
+      return declared.startsWith('image/') ? declared : 'image/jpeg';
     }
 
     function resizeBlobToJpegDataUrl(blob, maxDimension, quality) {
@@ -1966,6 +1988,8 @@
               displayMsg = 'Gemini 服务请求频繁或额度已用尽，请稍后重试';
             } else if (err && err.code === 'AI_BAD_REQUEST') {
               displayMsg = '图片格式或内容无法被 Gemini 处理，请重新拍摄';
+            } else if (err && (err.code === 'UNSUPPORTED_IMAGE_TYPE' || err.code === 'INVALID_IMAGE')) {
+              displayMsg = '图片格式不受支持，请选择 HEIC、JPG、PNG 或 WebP 图片';
             } else if (rawMsg.includes('429') || rawMsg.includes('频繁')) {
               displayMsg = 'API 接口请求频繁，请稍后重试';
             } else if (rawMsg.includes('400') || rawMsg.includes('无法解析')) {
