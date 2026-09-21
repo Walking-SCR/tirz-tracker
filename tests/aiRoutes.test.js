@@ -76,6 +76,28 @@ test('returns the normalized weight from the Gemini response', async () => {
   }
 });
 
+test('disables thinking budget and limits output tokens for minimum latency', async () => {
+  const originalFetch = globalThis.fetch;
+  let sentConfig = null;
+  globalThis.fetch = async (_input, init) => {
+    const payload = JSON.parse(init.body);
+    sentConfig = payload.generationConfig;
+    return new Response(JSON.stringify({
+      candidates: [{ content: { parts: [{ text: '{"weight":172.0,"unit":"斤"}' }] } }]
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  };
+
+  try {
+    const response = await handleAIRoutes(request({ imageBase64 }), { GEMINI_API_KEY: 'server-key' }, url);
+    assert.equal(response.status, 200);
+    assert.equal(sentConfig.temperature, 0);
+    assert.equal(sentConfig.maxOutputTokens, 32);
+    assert.equal(sentConfig.thinkingConfig?.thinkingBudget, 0);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test('passes HEIC images through to Gemini without requiring browser conversion', async () => {
   const originalFetch = globalThis.fetch;
   let sentMimeType = '';

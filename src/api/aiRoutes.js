@@ -2,7 +2,7 @@
 // The browser never supplies an API key: GEMINI_API_KEY must be a Worker Secret.
 
 const MAX_IMAGE_BASE64_LENGTH = 4_000_000;
-const UPSTREAM_TIMEOUT_MS = 8_000;
+const UPSTREAM_TIMEOUT_MS = 6_000;
 
 function extractJson(text) {
   if (!text) return null;
@@ -78,7 +78,7 @@ export async function handleAIRoutes(request, env, url, session) {
   }
 
   logEvent('info', 'ai_request_started', { requestId, mimeType, imageBase64Length: pureBase64.length });
-  const prompt = `You are a high-speed digital weight scale OCR engine. Look at the bathroom scale photo (including white or colored LED glowing digits under glass, LCD displays, and 7-segment numbers). Extract the weight numeric reading. Return ONLY a valid JSON: {"weight": number, "unit": "斤" or "kg", "confidence": "high"}. Example: {"weight": 168.5, "unit": "斤", "confidence": "high"}`;
+  const prompt = `Extract the weight number from this digital bathroom scale photo (white/colored LED digits under glass or LCD 7-segment display). Return ONLY valid JSON: {"weight": number, "unit": "斤"}. Example: {"weight": 168.5, "unit": "斤"}`;
   // The numbered model is currently the more reliable first choice. Keep the
   // alias as a fallback for transient model/region failures.
   const modelsToTry = ['gemini-3.1-flash-lite', 'gemini-flash-lite-latest'];
@@ -93,15 +93,38 @@ export async function handleAIRoutes(request, env, url, session) {
     const modelStartedAt = Date.now();
     try {
       const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`;
-      const res = await fetch(apiUrl, {
+      const payload = {
+        contents: [{ role: 'user', parts: [{ text: prompt }, { inlineData: { mimeType, data: pureBase64 } }] }],
+        generationConfig: {
+          responseMimeType: 'application/json',
+          temperature: 0,
+          maxOutputTokens: 32,
+          thinkingConfig: { thinkingBudget: 0 }
+        }
+      };
+
+      let res = await fetch(apiUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         signal: controller.signal,
-        body: JSON.stringify({
-          contents: [{ role: 'user', parts: [{ text: prompt }, { inlineData: { mimeType, data: pureBase64 } }] }],
-          generationConfig: { responseMimeType: 'application/json' }
-        })
+        body: JSON.stringify(payload)
       });
+
+      // Auto-fallback: if model returns 400 due to thinkingConfig, retry immediately without it
+      if (res.status === 400) {
+        const errCloned = res.clone();
+        const errTxt = await errCloned.text().catch(() => '');
+        if (/thinkingConfig|thinking_config|thinkingBudget/i.test(errTxt)) {
+          delete payload.generationConfig.thinkingConfig;
+          res = await fetch(apiUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            signal: controller.signal,
+            body: JSON.stringify(payload)
+          });
+        }
+      }
+
       lastStatus = res.status;
       if (!res.ok) {
         upstreamStatuses.push(res.status);
