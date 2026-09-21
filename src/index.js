@@ -23,6 +23,12 @@ export default {
     const url = new URL(request.url);
     const path = url.pathname;
 
+    // Create a request-scoped env clone that can incorporate client backup token if env.GITHUB_TOKEN is unset
+    const clientToken = request.headers.get('X-GitHub-Token');
+    const reqEnv = (clientToken && !env.GITHUB_TOKEN)
+      ? { ...env, GITHUB_TOKEN: clientToken.trim() }
+      : env;
+
     // 1. CSRF Protection for state-modifying API requests
     if (['POST', 'PATCH', 'DELETE'].includes(request.method) && path.startsWith('/api/')) {
       const origin = request.headers.get('Origin');
@@ -39,16 +45,16 @@ export default {
 
     // 2. Auth Routes (/api/auth/*)
     if (path.startsWith('/api/auth/')) {
-      const authRes = await handleAuthRoutes(request, env, url);
+      const authRes = await handleAuthRoutes(request, reqEnv, url);
       if (authRes) return addSecurityHeaders(authRes);
     }
 
     // 3. API Routes (/api/records, /api/doses, /api/photos, /api/ai)
     if (path.startsWith('/api/')) {
-      const session = await getAuthSession(request, env);
+      const session = await getAuthSession(request, reqEnv);
 
       if (path.startsWith('/api/ai/')) {
-        const aiRes = await handleAIRoutes(request, env, url, session);
+        const aiRes = await handleAIRoutes(request, reqEnv, url, session);
         if (aiRes) return addSecurityHeaders(aiRes);
       }
 
@@ -65,17 +71,17 @@ export default {
       }
 
       if (path.startsWith('/api/records')) {
-        const recordRes = await handleRecordRoutes(request, env, url, session);
+        const recordRes = await handleRecordRoutes(request, reqEnv, url, session);
         if (recordRes) return addSecurityHeaders(recordRes);
       }
 
       if (path.startsWith('/api/doses')) {
-        const doseRes = await handleDoseRoutes(request, env, url, session);
+        const doseRes = await handleDoseRoutes(request, reqEnv, url, session);
         if (doseRes) return addSecurityHeaders(doseRes);
       }
 
       if (path.startsWith('/api/photos')) {
-        const photoRes = await handlePhotoRoutes(request, env, url, session);
+        const photoRes = await handlePhotoRoutes(request, reqEnv, url, session);
         if (photoRes) return addSecurityHeaders(photoRes);
       }
 

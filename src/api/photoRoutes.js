@@ -11,10 +11,7 @@ export async function handlePhotoRoutes(request, env, url, session) {
     const photoPath = `images/${yyyy}/${mm}/${filename}`;
 
     try {
-      const clientToken = request.headers.get('X-GitHub-Token');
-      if (clientToken && !env.GITHUB_TOKEN) env._clientToken = clientToken;
-
-      if (env.GITHUB_TOKEN || env._clientToken) {
+      if (env.GITHUB_TOKEN) {
         const result = await fetchPrivatePhoto(env, photoPath);
         if (result) {
           return new Response(result.body, {

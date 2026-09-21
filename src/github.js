@@ -1,7 +1,7 @@
 // GitHub REST API client for server-side Private DATA Repo operations
 
 function getHeaders(env) {
-  const token = (env.GITHUB_TOKEN && env.GITHUB_TOKEN.trim()) || env._clientToken || '';
+  const token = (env.GITHUB_TOKEN && env.GITHUB_TOKEN.trim()) || '';
   const headers = {
     'User-Agent': 'tirz-tracker-cloudflare-worker',
     'Accept': 'application/vnd.github.v3+json'
