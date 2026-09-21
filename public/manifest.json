@@ -1,7 +1,7 @@
 {
-  "name": "替尔泊肽健康监测站",
-  "short_name": "替尔测重",
-  "description": "替尔泊肽智能视觉测重与GLP-1代谢周期监测助手",
+  "name": "体重记录管理",
+  "short_name": "体重管理",
+  "description": "智能视觉测重与健康体重记录管理助手",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",

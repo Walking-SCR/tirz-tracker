@@ -3,13 +3,13 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <title>替尔泊肽智能视觉测重助手</title>
+  <title>体重记录管理</title>
   
   <!-- PWA & Mobile Web App Meta -->
   <link rel="manifest" href="manifest.json">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="替尔测重">
+  <meta name="apple-mobile-web-app-title" content="体重记录管理">
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
   <link rel="icon" type="image/svg+xml" href="icons/icon.svg">
   <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
@@ -115,14 +115,14 @@
       <!-- Left: Logo & Brand -->
       <div class="flex items-center space-x-2 min-w-0">
         <div class="w-7 h-7 rounded-lg bg-gradient-to-tr from-cyberNeon/20 to-cyberCyan/20 border border-cyberNeon/40 flex-shrink-0 flex items-center justify-center text-cyberNeon shadow-[0_0_12px_rgba(0,255,178,0.25)]">
-          <i class="ph-bold ph-dna text-base"></i>
+          <i class="ph-bold ph-scales text-base"></i>
         </div>
         <div class="min-w-0">
           <div class="flex items-center gap-1.5 whitespace-nowrap">
-            <h1 class="text-xs font-black tracking-wider text-white">TIRZEPATIDE</h1>
+            <h1 class="text-xs font-black tracking-wider text-white">体重记录管理</h1>
             <span class="text-[9px] px-1 py-0.2 rounded bg-cyberNeon/15 text-cyberNeon font-mono border border-cyberNeon/30 whitespace-nowrap">v2.6</span>
           </div>
-          <p class="text-[9px] font-mono text-cyberTextDim whitespace-nowrap truncate">替尔泊肽 · 生物代谢测重监测站</p>
+          <p class="text-[9px] font-mono text-cyberTextDim whitespace-nowrap truncate">智能视觉识别 · 健康体重数据管理</p>
         </div>
       </div>
 
@@ -176,15 +176,25 @@
       </div>
     </div>
 
-    <!-- Metric Overview Grid (Compared with baseline 174.7) -->
-    <div class="grid grid-cols-3 gap-2.5">
+    <!-- Metric Overview Grid (Compared with baseline 174.7 & Target 148) -->
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
       <!-- Total Weight Drop -->
       <div class="glass-hud rounded-2xl p-3 text-center relative">
         <div class="text-[10px] font-mono text-cyberTextDim flex items-center justify-center gap-1">
-          <span>首针累计净减</span>
+          <span>初始累计净减</span>
         </div>
         <div class="text-lg font-mono font-black text-cyberNeon mt-1" id="statTotalDrop">-4.4 斤</div>
         <div class="text-[9px] font-mono text-neutral-500 mt-0.5" id="statTotalSub">基准: 174.7 斤</div>
+      </div>
+
+      <!-- Target Weight & Remaining Distance -->
+      <div class="glass-hud rounded-2xl p-3 text-center relative">
+        <div class="text-[10px] font-mono text-cyberTextDim flex items-center justify-center gap-1">
+          <i class="ph-bold ph-flag-pennant text-cyberCyan"></i>
+          <span>目标 148 斤</span>
+        </div>
+        <div class="text-lg font-mono font-black text-cyberCyan mt-1" id="statTargetRemaining">-- 斤</div>
+        <div class="text-[9px] font-mono text-neutral-500 mt-0.5" id="statTargetSub">距离目标差距</div>
       </div>
 
       <!-- Weekly / Cycle Drop -->
@@ -259,7 +269,7 @@
           <i class="ph-bold ph-chart-line-up text-cyberNeon"></i>
           <span class="text-xs font-mono font-bold text-white">全周期体重动态走势</span>
         </div>
-        <span class="text-[10px] font-mono text-cyberPurple font-semibold">首针 174.7 斤为基准原点</span>
+        <span class="text-[10px] font-mono text-cyberPurple font-semibold">初始 174.7 斤为基准原点</span>
       </div>
 
       <!-- Canvas container with fixed height for responsiveness -->
@@ -289,7 +299,7 @@
       <div class="flex items-center justify-between px-1">
         <div class="flex items-center gap-1.5">
           <i class="ph-bold ph-clock-counter-clockwise text-cyberCyan"></i>
-          <span class="text-xs font-mono font-bold text-white">称重与注射历史凭证档案</span>
+          <span class="text-xs font-mono font-bold text-white">称重历史与凭证档案</span>
         </div>
         <span class="text-[10px] font-mono text-cyberTextDim" id="recordCountBadge">共 8 条</span>
       </div>
@@ -426,7 +436,7 @@
             <i class="ph-bold ph-shield-check text-lg"></i>
           </div>
           <div>
-            <h2 class="text-sm font-black tracking-wider text-white font-mono">TIRZEPATIDE SECURE HUD</h2>
+            <h2 class="text-sm font-black tracking-wider text-white font-mono">体重记录管理安全中心</h2>
             <p class="text-[10px] text-cyberTextDim font-mono">受信任设备安全验证 · 180天免密</p>
           </div>
         </div>
@@ -1374,6 +1384,9 @@
       const quickStartPoint = document.getElementById('quickStartPoint');
       const quickMaxDrop = document.getElementById('quickMaxDrop');
       const quickDailyDrop = document.getElementById('quickDailyDrop');
+      const statTargetRemaining = document.getElementById('statTargetRemaining');
+      const statTargetSub = document.getElementById('statTargetSub');
+      const TARGET_WEIGHT = 148.0;
 
       if (weightRecords.length === 0) {
         if (statCurrentWeight) statCurrentWeight.textContent = '-- 斤';
@@ -1385,6 +1398,8 @@
         if (statTotalSub) statTotalSub.textContent = '基准: -- 斤';
         if (statLowestWeight) statLowestWeight.textContent = '-- 斤';
         if (statLowestDate) statLowestDate.textContent = '-- 破峰';
+        if (statTargetRemaining) statTargetRemaining.textContent = '-- 斤';
+        if (statTargetSub) statTargetSub.textContent = '目标: 148 斤';
         if (quickStartPoint) quickStartPoint.textContent = '--';
         if (quickMaxDrop) quickMaxDrop.textContent = '--';
         if (quickDailyDrop) quickDailyDrop.textContent = '--';
@@ -1396,6 +1411,7 @@
       const latestRec = sorted[sorted.length - 1];
       const latest = latestRec.weight;
       const totalLoss = (latest - baseline).toFixed(1);
+      const diffToTarget = (latest - TARGET_WEIGHT);
 
       // Find lowest fasting weight
       const fastingRecords = sorted.filter(r => (r.condition || '').includes('空腹'));
@@ -1410,6 +1426,22 @@
         statTotalDrop.className = totalLoss <= 0 ? 'text-lg font-mono font-black text-cyberNeon mt-1' : 'text-lg font-mono font-black text-amber-400 mt-1';
       }
       if (statTotalSub) statTotalSub.textContent = `基准: ${baseline.toFixed(1)} 斤`;
+
+      if (statTargetRemaining) {
+        if (diffToTarget > 0) {
+          statTargetRemaining.textContent = `还剩 ${diffToTarget.toFixed(1)} 斤`;
+          statTargetRemaining.className = 'text-lg font-mono font-black text-cyberCyan mt-1';
+          if (statTargetSub) statTargetSub.textContent = `距 148 斤目标还差 ${diffToTarget.toFixed(1)} 斤`;
+        } else if (diffToTarget === 0) {
+          statTargetRemaining.textContent = '已达成目标!';
+          statTargetRemaining.className = 'text-lg font-mono font-black text-cyberNeon mt-1';
+          if (statTargetSub) statTargetSub.textContent = '完美达成 148 斤目标！';
+        } else {
+          statTargetRemaining.textContent = `超额 ${Math.abs(diffToTarget).toFixed(1)} 斤`;
+          statTargetRemaining.className = 'text-lg font-mono font-black text-cyberNeon mt-1';
+          if (statTargetSub) statTargetSub.textContent = `已超越 148 斤目标`;
+        }
+      }
 
       if (statLowestWeight && lowestRec) statLowestWeight.textContent = `${lowestRec.weight.toFixed(1)} 斤`;
       if (statLowestDate && lowestRec) {
