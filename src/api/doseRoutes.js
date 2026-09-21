@@ -6,36 +6,44 @@ export async function handleDoseRoutes(request, env, url, session) {
 
   // 1. GET /api/doses
   if (path === '/api/doses' && method === 'GET') {
+    if (!env.GITHUB_TOKEN) {
+      return new Response(JSON.stringify({
+        error: 'STORAGE_NOT_CONFIGURED',
+        message: '未配置 GitHub 访问令牌，无法从私有数据仓库读取针剂记录'
+      }), { status: 503, headers: { 'Content-Type': 'application/json' } });
+    }
+
     let doses = [];
     try {
       const res = await getDoses(env);
-      if (res && Array.isArray(res.doses) && res.doses.length > 0) {
+      if (res && Array.isArray(res.doses)) {
         doses = res.doses;
       }
     } catch (err) {
-      console.warn('GitHub getDoses error, trying fallback:', err);
-    }
-
-    // Fallback to static asset doses if empty
-    if (!doses || doses.length === 0) {
-      if (env.ASSETS) {
-        try {
-          const assetRes = await env.ASSETS.fetch(new Request(new URL('/data/doses.json', request.url)));
-          if (assetRes && assetRes.status === 200) {
-            const data = await assetRes.json();
-            doses = Array.isArray(data) ? data : (data.doses || []);
-          }
-        } catch (e) {}
-      }
+      console.error('GitHub getDoses error:', err);
+      return new Response(JSON.stringify({
+        error: 'STORAGE_READ_FAILED',
+        message: '获取针剂记录失败: ' + err.message
+      }), { status: 502, headers: { 'Content-Type': 'application/json' } });
     }
 
     return new Response(JSON.stringify(doses), {
-      headers: { 'Content-Type': 'application/json' }
+      headers: {
+        'Content-Type': 'application/json',
+        'Cache-Control': 'no-cache, no-store, must-revalidate'
+      }
     });
   }
 
   // 2. POST /api/doses
   if (path === '/api/doses' && method === 'POST') {
+    if (!env.GITHUB_TOKEN) {
+      return new Response(JSON.stringify({
+        error: 'STORAGE_NOT_CONFIGURED',
+        message: '未配置 GitHub Token，无法保存针剂记录'
+      }), { status: 503, headers: { 'Content-Type': 'application/json' } });
+    }
+
     let body;
     try {
       body = await request.json();
@@ -70,6 +78,13 @@ export async function handleDoseRoutes(request, env, url, session) {
   const delMatch = path.match(/^\/api\/doses\/([a-zA-Z0-9_-]+)$/);
   const delTargetId = delMatch ? delMatch[1] : (path === '/api/doses' ? url.searchParams.get('id') : null);
   if (delTargetId && method === 'DELETE') {
+    if (!env.GITHUB_TOKEN) {
+      return new Response(JSON.stringify({
+        error: 'STORAGE_NOT_CONFIGURED',
+        message: '未配置 GitHub Token，无法删除针剂记录'
+      }), { status: 503, headers: { 'Content-Type': 'application/json' } });
+    }
+
     const targetId = delTargetId;
     const { doses } = await getDoses(env);
     const updated = doses.filter(d => d.id !== targetId);

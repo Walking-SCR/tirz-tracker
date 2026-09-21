@@ -10,54 +10,37 @@ export async function handlePhotoRoutes(request, env, url, session) {
     const [, yyyy, mm, filename] = photoMatch;
     const photoPath = `images/${yyyy}/${mm}/${filename}`;
 
+    if (!env.GITHUB_TOKEN) {
+      return new Response('GitHub token not configured', { status: 503 });
+    }
+
     try {
-      if (env.GITHUB_TOKEN) {
-        const result = await fetchPrivatePhoto(env, photoPath);
-        if (result) {
-          return new Response(result.body, {
-            headers: {
-              'Content-Type': result.contentType || 'image/webp',
-              'Cache-Control': 'public, max-age=86400',
-              'X-Content-Type-Options': 'nosniff'
-            }
-          });
+      let result = await fetchPrivatePhoto(env, photoPath);
+      if (!result) {
+        const baseName = filename.replace(/\.[a-z0-9]+$/i, '');
+        const currentExt = (filename.match(/\.[a-z0-9]+$/i)?.[0] || '').toLowerCase();
+        const altExts = ['.jpg', '.png', '.webp', '.jpeg', '.heic'].filter(ext => ext !== currentExt);
+        for (const ext of altExts) {
+          result = await fetchPrivatePhoto(env, `images/${yyyy}/${mm}/${baseName}${ext}`);
+          if (result) break;
         }
+      }
+
+      if (result) {
+        return new Response(result.body, {
+          headers: {
+            'Content-Type': result.contentType || 'image/jpeg',
+            'Cache-Control': 'private, max-age=86400',
+            'X-Content-Type-Options': 'nosniff'
+          }
+        });
       }
     } catch (err) {
-      console.warn('GitHub photo fetch failed, trying local assets fallback:', err);
+      console.warn('GitHub photo fetch failed:', err);
+      return new Response('Error fetching photo from private repository', { status: 502 });
     }
 
-    // Fallback to static assets if available
-    if (env.ASSETS) {
-      const candidates = [photoPath];
-      if (filename.endsWith('.webp')) {
-        candidates.push(`images/${yyyy}/${mm}/${filename.replace(/\.webp$/, '.png')}`);
-      } else if (filename.endsWith('.png')) {
-        candidates.push(`images/${yyyy}/${mm}/${filename.replace(/\.png$/, '.webp')}`);
-      }
-
-      for (const candidate of candidates) {
-        try {
-          const assetUrl = new URL(`/${candidate}`, request.url);
-          const assetRes = await env.ASSETS.fetch(new Request(assetUrl, request));
-          if (assetRes && assetRes.status < 400) {
-            const contentType = candidate.endsWith('.png') ? 'image/png' : 'image/webp';
-            const headers = new Headers(assetRes.headers);
-            headers.set('Content-Type', contentType);
-            headers.set('Cache-Control', 'public, max-age=86400');
-            headers.set('X-Content-Type-Options', 'nosniff');
-            return new Response(assetRes.body, {
-              status: assetRes.status,
-              headers
-            });
-          }
-        } catch (assetErr) {
-          console.warn('Asset fetch error:', assetErr);
-        }
-      }
-    }
-
-    return new Response('Photo not found', { status: 404 });
+    return new Response('Photo not found in private repository', { status: 404 });
   }
 
   return null;

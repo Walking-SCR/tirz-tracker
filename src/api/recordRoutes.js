@@ -6,31 +6,39 @@ export async function handleRecordRoutes(request, env, url, session) {
 
   // 1. GET /api/records
   if (path === '/api/records' && method === 'GET') {
+    if (!env.GITHUB_TOKEN) {
+      return new Response(JSON.stringify({
+        error: 'STORAGE_NOT_CONFIGURED',
+        message: '未配置 GitHub 访问令牌，无法从私有数据仓库读取数据'
+      }), {
+        status: 503,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+
     let records = [];
     try {
       const res = await getRecords(env);
-      if (res && Array.isArray(res.records) && res.records.length > 0) {
+      if (res && Array.isArray(res.records)) {
         records = res.records;
       }
     } catch (err) {
-      console.warn('GitHub getRecords error, trying fallback:', err);
-    }
-
-    // Fallback to static asset records if empty
-    if (!records || records.length === 0) {
-      if (env.ASSETS) {
-        try {
-          const assetRes = await env.ASSETS.fetch(new Request(new URL('/data/records.json', request.url)));
-          if (assetRes && assetRes.status === 200) {
-            const data = await assetRes.json();
-            records = Array.isArray(data) ? data : (data.weights || []);
-          }
-        } catch (e) {}
-      }
+      console.error('GitHub getRecords error:', err);
+      const isAuth = /401|403|Bad credentials|Requires authentication/.test(String(err?.message || ''));
+      return new Response(JSON.stringify({
+        error: isAuth ? 'GITHUB_AUTH_FAILED' : 'STORAGE_READ_FAILED',
+        message: isAuth ? 'GitHub Token 无效或无权限访问私有仓库' : '私有仓库读取失败: ' + err.message
+      }), {
+        status: isAuth ? 503 : 502,
+        headers: { 'Content-Type': 'application/json' }
+      });
     }
 
     return new Response(JSON.stringify(records), {
-      headers: { 'Content-Type': 'application/json' }
+      headers: {
+        'Content-Type': 'application/json',
+        'Cache-Control': 'no-cache, no-store, must-revalidate'
+      }
     });
   }
 
@@ -57,34 +65,18 @@ export async function handleRecordRoutes(request, env, url, session) {
     let photoPath = '';
     let uploadedSha = null;
 
-    // Do not attempt a GitHub write when the Worker has no repository token.
-    // The record remains a successful local save and can be synced after the
-    // administrator configures GITHUB_TOKEN.
+    // Strictly require GITHUB_TOKEN for writes
     if (!env.GITHUB_TOKEN) {
       return new Response(JSON.stringify({
-        success: true,
-        record: {
-          id: recordId,
-          date,
-          time: time || '08:00',
-          weight: parseFloat(weight),
-          unit: unit || '斤',
-          condition: condition || '早上空腹',
-          remark: remark || '',
-          photo: '',
-          timestamp,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString()
-        },
-        cloudSync: false,
-        message: '记录已保存在本地，未配置 GitHub Token'
-      }), { headers: { 'Content-Type': 'application/json' } });
+        error: 'STORAGE_NOT_CONFIGURED',
+        message: '未配置 GitHub Token，无法同步至私有数据仓库'
+      }), { status: 503, headers: { 'Content-Type': 'application/json' } });
     }
 
     // Upload photo if base64 provided
     if (photoBase64 && typeof photoBase64 === 'string' && photoBase64.startsWith('data:image')) {
       try {
-        const filename = `${recordId}.webp`;
+        const filename = `${recordId}.jpg`;
         const uploadRes = await uploadPhoto(env, yyyy, mm, filename, photoBase64);
         photoPath = uploadRes.path;
         uploadedSha = uploadRes.sha;
@@ -114,17 +106,6 @@ export async function handleRecordRoutes(request, env, url, session) {
       updatedAt: new Date().toISOString()
     };
 
-    if (!env.GITHUB_TOKEN) {
-      return new Response(JSON.stringify({
-        success: true,
-        record: newRecord,
-        cloudSync: false,
-        message: '未配置 GitHub Token，记录已保存在本地但未同步到私有仓库'
-      }), {
-        headers: { 'Content-Type': 'application/json' }
-      });
-    }
-
     try {
       const { records } = await getRecords(env);
       records.unshift(newRecord);
@@ -153,6 +134,13 @@ export async function handleRecordRoutes(request, env, url, session) {
   const patchMatch = path.match(/^\/api\/records\/([a-zA-Z0-9_-]+)$/);
   const patchTargetId = patchMatch ? patchMatch[1] : (path === '/api/records' ? url.searchParams.get('id') : null);
   if (patchTargetId && method === 'PATCH') {
+    if (!env.GITHUB_TOKEN) {
+      return new Response(JSON.stringify({
+        error: 'STORAGE_NOT_CONFIGURED',
+        message: '未配置 GitHub Token，无法同步至私有数据仓库'
+      }), { status: 503, headers: { 'Content-Type': 'application/json' } });
+    }
+
     const targetId = patchTargetId;
     let body;
     try {
@@ -173,7 +161,7 @@ export async function handleRecordRoutes(request, env, url, session) {
     if (body.photoBase64 && typeof body.photoBase64 === 'string' && body.photoBase64.startsWith('data:image')) {
       const yyyy = String(new Date(current.timestamp).getFullYear());
       const mm = String(new Date(current.timestamp).getMonth() + 1).padStart(2, '0');
-      const filename = `${current.id}.webp`;
+      const filename = `${current.id}.jpg`;
       const uploadRes = await uploadPhoto(env, yyyy, mm, filename, body.photoBase64);
       current.photo = uploadRes.path;
     }
@@ -199,9 +187,10 @@ export async function handleRecordRoutes(request, env, url, session) {
   if (delTargetId && method === 'DELETE') {
     const targetId = delTargetId;
     if (!env.GITHUB_TOKEN) {
-      return new Response(JSON.stringify({ success: true, id: targetId, cloudSync: false }), {
-        headers: { 'Content-Type': 'application/json' }
-      });
+      return new Response(JSON.stringify({
+        error: 'STORAGE_NOT_CONFIGURED',
+        message: '未配置 GitHub Token，无法在私有数据仓库删除'
+      }), { status: 503, headers: { 'Content-Type': 'application/json' } });
     }
 
     try {

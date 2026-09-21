@@ -836,139 +836,9 @@
     let targetRecordForPhotoUpdate = null;
     let pendingConfirmAction = null;
 
-    // Baseline biometric telemetry data and photos (ensures PWA/first open is never blank)
-    const defaultDoses = [
-      {
-        id: "dose-1",
-        seq: "第一针",
-        amount: "2.5ml",
-        date: "2026-09-12",
-        time: "23:10",
-        weight: 174.7,
-        site: "腹部左侧",
-        timestamp: 1789225800000
-      },
-      {
-        id: "dose-2",
-        seq: "第二针",
-        amount: "2.5ml",
-        date: "2026-09-19",
-        time: "23:57",
-        weight: 170.3,
-        site: "腹部右侧",
-        timestamp: 1789833420000
-      }
-    ];
-    const defaultWeights = [
-      {
-        id: "wt-1789225800000",
-        date: "2026-09-12",
-        time: "23:10",
-        weight: 174.7,
-        unit: "斤",
-        condition: "第一针打针时",
-        remark: "替尔泊肽起始基准体重 (第1针 2.5ml)",
-        photo: "images/2026/09/wt-1789225800000.png",
-        photoPath: "images/2026/09/wt-1789225800000.png",
-        timestamp: 1789225800000
-      },
-      {
-        id: "wt-1789344900000",
-        date: "2026-09-14",
-        time: "08:15",
-        weight: 171.5,
-        unit: "斤",
-        condition: "早上空腹",
-        remark: "首周吸收期 · 较首针已下潜 -3.2斤",
-        photo: "images/2026/09/wt-1789344900000.png",
-        photoPath: "images/2026/09/wt-1789344900000.png",
-        timestamp: 1789344900000
-      },
-      {
-        id: "wt-1789431600000",
-        date: "2026-09-15",
-        time: "08:20",
-        weight: 171.0,
-        unit: "斤",
-        condition: "早上空腹",
-        remark: "饱腹感持续，平稳下降",
-        photo: "images/2026/09/wt-1789431600000.png",
-        photoPath: "images/2026/09/wt-1789431600000.png",
-        timestamp: 1789431600000
-      },
-      {
-        id: "wt-1789522800000",
-        date: "2026-09-16",
-        time: "09:40",
-        weight: 169.9,
-        unit: "斤",
-        condition: "上午空腹",
-        remark: "首次跌破170斤大关！达成第1个里程碑",
-        photo: "images/2026/09/wt-1789522800000.png",
-        photoPath: "images/2026/09/wt-1789522800000.png",
-        timestamp: 1789522800000
-      },
-      {
-        id: "wt-1789608600000",
-        date: "2026-09-17",
-        time: "09:30",
-        weight: 168.5,
-        unit: "斤",
-        condition: "上午空腹",
-        remark: "持续平稳下降，体能精力正常",
-        photo: "images/2026/09/wt-1789608600000.png",
-        photoPath: "images/2026/09/wt-1789608600000.png",
-        timestamp: 1789608600000
-      },
-      {
-        id: "wt-1789694100000",
-        date: "2026-09-18",
-        time: "09:15",
-        weight: 167.9,
-        unit: "斤",
-        condition: "上午空腹",
-        remark: "体重进入平台低位微波动",
-        photo: "images/2026/09/wt-1789694100000.png",
-        photoPath: "images/2026/09/wt-1789694100000.png",
-        timestamp: 1789694100000
-      },
-      {
-        id: "wt-1789780200000",
-        date: "2026-09-19",
-        time: "09:10",
-        weight: 167.8,
-        unit: "斤",
-        condition: "上午空腹",
-        remark: "首周期空腹历史最低点（破峰纪录）",
-        photo: "images/2026/09/wt-1789780200000.png",
-        photoPath: "images/2026/09/wt-1789780200000.png",
-        timestamp: 1789780200000
-      },
-      {
-        id: "wt-1789824600000",
-        date: "2026-09-19",
-        time: "21:30",
-        weight: 170.3,
-        unit: "斤",
-        condition: "晚上吃饱水果",
-        remark: "晚餐进食较多水果与水分，第2针给药前测重",
-        photo: "images/2026/09/wt-1789824600000.png",
-        photoPath: "images/2026/09/wt-1789824600000.png",
-        timestamp: 1789824600000
-      },
-      {
-        id: "wt-1789866900000",
-        date: "2026-09-20",
-        time: "09:15",
-        weight: 169.6,
-        unit: "斤",
-        condition: "上午空腹",
-        remark: "第2针次日 · 迅速排空回落至 169.6斤",
-        photo: "images/2026/09/wt-1789866900000.png",
-        photoPath: "images/2026/09/wt-1789866900000.png",
-        timestamp: 1789866900000
-      }
-    ];
+    // Biometric telemetry data and photos are stored exclusively in tirz-tracker-data
+    const defaultDoses = [];
+    const defaultWeights = [];
 
     // Helper functions
     function showToast(msg, isError = false) {
@@ -1056,66 +926,24 @@
 
     async function syncWithCloud(silent = false) {
       try {
-        let cloudWeights = [];
-        let cloudDoses = [];
+        const cloudWeights = await CloudStorageAdapter.getRecords();
+        const cloudDoses = await CloudStorageAdapter.getDoses();
 
-        // 1. Try API endpoints
-        try {
-          cloudWeights = await CloudStorageAdapter.getRecords();
-        } catch (e) {
-          // If API fails or unauthenticated, fallback to static /data/records.json
-          const res = await fetch('/data/records.json').catch(() => null);
-          if (res && res.ok) {
-            const d = await res.json();
-            cloudWeights = Array.isArray(d) ? d : (d.weights || []);
-          }
+        if (Array.isArray(cloudWeights)) {
+          weightRecords = [...cloudWeights].sort((a, b) => b.timestamp - a.timestamp);
+          saveWeightsToStorage();
         }
 
-        try {
-          cloudDoses = await CloudStorageAdapter.getDoses();
-        } catch (e) {
-          const res = await fetch('/data/doses.json').catch(() => null);
-          if (res && res.ok) {
-            const d = await res.json();
-            cloudDoses = Array.isArray(d) ? d : (d.doses || []);
-          }
+        if (Array.isArray(cloudDoses)) {
+          doseRecords = [...cloudDoses].sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+          saveDosesToStorage();
         }
 
-        if (Array.isArray(cloudWeights) && cloudWeights.length > 0) {
-          const localMap = new Map(weightRecords.map(w => [w.id, w]));
-          cloudWeights.forEach(cw => {
-            if (!localMap.has(cw.id)) {
-              localMap.set(cw.id, cw);
-            } else {
-              const loc = localMap.get(cw.id);
-              if (loc.photo && loc.photo.startsWith('data:')) {
-                cw.photo = loc.photo;
-              }
-              Object.assign(loc, cw);
-            }
-          });
-          weightRecords = Array.from(localMap.values()).sort((a, b) => b.timestamp - a.timestamp);
-        }
-
-        if (Array.isArray(cloudDoses) && cloudDoses.length > 0) {
-          const doseMap = new Map(doseRecords.map(d => [d.id, d]));
-          cloudDoses.forEach(cd => {
-            if (!doseMap.has(cd.id)) {
-              doseMap.set(cd.id, cd);
-            } else {
-              Object.assign(doseMap.get(cd.id), cd);
-            }
-          });
-          doseRecords = Array.from(doseMap.values());
-        }
-
-        saveWeightsToStorage();
-        saveDosesToStorage();
         refreshAllUI();
-        if (!silent) showToast('数据已最新同步！');
+        if (!silent) showToast('已从私有数据仓库同步最新数据！');
       } catch (err) {
         console.warn('Cloud sync error:', err);
-        if (!silent) showToast('同步失败: ' + err.message, true);
+        if (!silent) showToast('同步失败: ' + (err.message || '网络或认证异常'), true);
       }
     }
 
@@ -1136,38 +964,36 @@
         if (savedWeights) {
           try {
             const parsed = JSON.parse(savedWeights);
-            if (Array.isArray(parsed) && parsed.length > 0 && !JSON.stringify(parsed).includes('wt-0')) {
+            if (Array.isArray(parsed) && !JSON.stringify(parsed).includes('wt-0')) {
               weightRecords = parsed;
             } else {
-              weightRecords = [...defaultWeights];
+              weightRecords = [];
             }
           } catch (e) {
-            weightRecords = [...defaultWeights];
+            weightRecords = [];
           }
         } else {
-          weightRecords = [...defaultWeights];
+          weightRecords = [];
         }
 
         if (savedDoses) {
           try {
             const parsed = JSON.parse(savedDoses);
-            if (Array.isArray(parsed) && parsed.length > 0) {
+            if (Array.isArray(parsed)) {
               doseRecords = parsed;
             } else {
-              doseRecords = [...defaultDoses];
+              doseRecords = [];
             }
           } catch (e) {
-            doseRecords = [...defaultDoses];
+            doseRecords = [];
           }
         } else {
-          doseRecords = [...defaultDoses];
+          doseRecords = [];
         }
-        saveWeightsToStorage();
-        saveDosesToStorage();
       } catch (err) {
         console.warn('Storage load fallback', err);
-        weightRecords = [...defaultWeights];
-        doseRecords = [...defaultDoses];
+        weightRecords = [];
+        doseRecords = [];
       }
 
       refreshAllUI();
@@ -1200,14 +1026,13 @@
           if (deviceSetupModal) deviceSetupModal.classList.remove('hidden');
         }
 
-        if (status.authenticated) {
+        if (status.authenticated && status.email) {
           const emailDisplay = document.getElementById('sessionUserEmail');
-          if (emailDisplay && status.email) emailDisplay.textContent = status.email;
-          await syncWithCloud(true);
-        } else {
-          // If not authenticated, still try to fetch static /data/records.json to ensure data is loaded
-          await syncWithCloud(true);
+          if (emailDisplay) emailDisplay.textContent = status.email;
         }
+
+        // Authoritative sync from tirz-tracker-data
+        await syncWithCloud(true);
       } catch (e) {
         console.warn('Auth check error:', e);
       }
@@ -1283,7 +1108,7 @@
             <div class="flex items-center space-x-3">
               <div class="relative w-14 h-16 rounded-xl overflow-hidden bg-black/80 border border-cyberNeon/30 flex-shrink-0 cursor-pointer group/thumb hover:scale-105 transition" data-view-img="${item.id}">
                 ${photoUrl ? `
-                  <img src="${photoUrl}" onerror="if(!this.dataset.retried){this.dataset.retried='1'; this.src='images/' + (item.photoPath ? item.photoPath.replace(/^images\\//, '') : (item.id + '.png'));} else { this.classList.add('opacity-40'); }" class="w-full h-full object-cover">
+                  <img src="${photoUrl}" onerror="this.classList.add('opacity-30');" class="w-full h-full object-cover">
                   <div class="absolute inset-0 bg-black/30 flex items-center justify-center opacity-0 group-hover/thumb:opacity-100 transition">
                     <i class="ph-bold ph-magnifying-glass text-white text-xs"></i>
                   </div>
@@ -1591,10 +1416,7 @@
       if (!modal || !img) return;
 
       img.onerror = function() {
-        if (!this.dataset.retried && photoStr) {
-          this.dataset.retried = '1';
-          this.src = photoStr.startsWith('/') ? photoStr : `/${photoStr}`;
-        }
+        this.classList.add('opacity-40');
       };
       img.dataset.retried = '';
       const resolved = CloudStorageAdapter.resolvePhotoUrl(photoStr);
@@ -2170,32 +1992,21 @@
             unit: '斤',
             condition: cond,
             remark: remark,
-            photo: currentParsedImageBase64 || '',
-            photoPath: currentParsedImageBase64 ? `images/${new Date(timestamp).getFullYear()}/${String(new Date(timestamp).getMonth()+1).padStart(2,'0')}/${recordId}.webp` : '',
             timestamp: timestamp
           };
 
-          weightRecords.unshift(newRecord);
-          saveWeightsToStorage();
-          refreshAllUI();
-          if (confirmModal) confirmModal.classList.add('hidden');
-          showToast('称重记录已成功保存在本地！');
-
-          if (CloudStorageAdapter.isAuthenticated()) {
-            showToast('正在同步至私有数据仓库...');
-            CloudStorageAdapter.createRecord(newRecord, currentParsedImageBase64 || null).then(saved => {
-              if (saved) {
-                if (saved.cloudSync === false) {
-                  showToast('记录已保存在本地（云端数据仓库未配置）');
-                } else {
-                  showToast('数据及秤面凭证已成功存入 GitHub 私有仓库！');
-                }
-                syncWithCloud(true);
-              }
-            }).catch(err => {
-              console.warn('Cloud save failed:', err);
-              showToast('本地已保存，云端同步: ' + err.message, true);
-            });
+          showToast('正在同步至私有数据仓库...');
+          btnSaveConfirm.disabled = true;
+          try {
+            await CloudStorageAdapter.createRecord(newRecord, currentParsedImageBase64 || null);
+            if (confirmModal) confirmModal.classList.add('hidden');
+            showToast('数据及秤面凭证已成功存入 GitHub 私有仓库！');
+            await syncWithCloud(true);
+          } catch (err) {
+            console.error('Cloud save failed:', err);
+            showToast('同步至私有仓库失败: ' + err.message, true);
+          } finally {
+            btnSaveConfirm.disabled = false;
           }
         });
       }
@@ -2481,14 +2292,14 @@
       if ('caches' in window) {
         caches.keys().then(names => {
           for (let name of names) {
-            if (name !== 'tirz-tracker-v4.2') {
+            if (name !== 'tirz-tracker-v5.0') {
               caches.delete(name);
             }
           }
         });
       }
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/sw.js?v=4.2', { updateViaCache: 'none' })
+        navigator.serviceWorker.register('/sw.js?v=5.0', { updateViaCache: 'none' })
           .then((registration) => {
             registration.update();
             registration.onupdatefound = () => {

@@ -3,3 +3,9 @@ node_modules/
 .wrangler/
 dist/
 .DS_Store
+
+# Private Biometric Data & Photos (Kept exclusively in tirz-tracker-data repo)
+data/
+images/
+public/data/
+public/images/
