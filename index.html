@@ -120,7 +120,7 @@
         <div class="min-w-0">
           <div class="flex items-center gap-1.5 whitespace-nowrap">
             <h1 class="text-xs font-black tracking-wider text-white">体重记录管理</h1>
-            <span class="text-[9px] px-1 py-0.2 rounded bg-cyberNeon/15 text-cyberNeon font-mono border border-cyberNeon/30 whitespace-nowrap">v2.6</span>
+            <span class="text-[9px] px-1 py-0.2 rounded bg-cyberNeon/15 text-cyberNeon font-mono border border-cyberNeon/30 whitespace-nowrap">v2.7</span>
           </div>
           <p class="text-[9px] font-mono text-cyberTextDim whitespace-nowrap truncate">智能视觉识别 · 健康体重数据管理</p>
         </div>
@@ -1607,10 +1607,12 @@
       return new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = (e) => {
+          const rawDataUrl = e.target.result;
           const img = new Image();
           img.onload = () => {
-            let width = img.width;
-            let height = img.height;
+            let width = img.naturalWidth || img.width;
+            let height = img.naturalHeight || img.height;
+            if (!width || !height) return resolve(rawDataUrl);
             if (width > height) {
               if (width > maxDimension) {
                 height = Math.round((height * maxDimension) / width);
@@ -1626,14 +1628,22 @@
             canvas.width = width;
             canvas.height = height;
             const ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#FFFFFF';
+            ctx.fillRect(0, 0, width, height);
             ctx.drawImage(img, 0, 0, width, height);
 
-            const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
-            const format = isSafari ? 'image/jpeg' : 'image/webp';
-            resolve(canvas.toDataURL(format, quality));
+            try {
+              const jpegUrl = canvas.toDataURL('image/jpeg', 0.80);
+              if (jpegUrl && jpegUrl.length > 100 && jpegUrl.startsWith('data:image/')) {
+                return resolve(jpegUrl);
+              }
+            } catch (canvasErr) {
+              console.warn('Canvas toDataURL failed, using raw data', canvasErr);
+            }
+            resolve(rawDataUrl);
           };
-          img.onerror = reject;
-          img.src = e.target.result;
+          img.onerror = () => resolve(rawDataUrl);
+          img.src = rawDataUrl;
         };
         reader.onerror = reject;
         reader.readAsDataURL(file);
@@ -1767,53 +1777,48 @@
 
         // 2. Try direct Google Gemini API call
         if (userGeminiKey) {
-          const prompt = `You are a high-speed digital weight scale OCR engine. Look at the bathroom scale photo (including white or colored LED glowing digits under glass, LCD displays, and 7-segment numbers). Extract the weight numeric reading. Return ONLY a valid JSON: {"weight": number, "unit": "斤" or "kg", "confidence": "high"}. Example: {"weight": 168.5, "unit": "斤", "confidence": "high"}`;
-          const models = [
-            'gemini-flash-lite-latest',
-            'gemini-3.1-flash-lite',
-            'gemini-3.6-flash',
-            'gemini-3.5-flash-lite',
-            'gemini-flash-latest'
-          ];
+          const prompt = `You are a digital weight scale reader. Identify the numeric weight reading on the bathroom scale display. Return ONLY JSON: {"weight": 168.5, "unit": "斤"}`;
           const mimeMatch = base64Image.match(/^data:([^;]+);base64,/);
           const mimeType = mimeMatch ? mimeMatch[1] : 'image/jpeg';
-          for (const model of models) {
-            try {
-              const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${userGeminiKey}`;
-              const res = await fetch(apiUrl, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  contents: [{
-                    role: 'user',
-                    parts: [
-                      { text: prompt },
-                      { inlineData: { mimeType: mimeType, data: pureBase64 } }
-                    ]
-                  }],
-                  generationConfig: { responseMimeType: 'application/json' }
-                })
-              });
-              if (res.ok) {
-                const data = await res.json();
-                const textRes = data.candidates?.[0]?.content?.parts?.[0]?.text;
-                if (textRes) {
-                  const parsed = extractJsonClient(textRes);
-                  let wt = parsed ? parsed.weight : null;
-                  if (typeof wt === 'string') wt = parseFloat(wt.replace(/[^0-9.]/g, ''));
-                  if (wt && !isNaN(Number(wt)) && Number(wt) > 0) {
-                    return {
-                      weight: Number(wt),
-                      unit: parsed.unit || '斤',
-                      confidence: parsed.confidence || 'high',
-                      model: model
-                    };
-                  }
+          try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 6000);
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-lite-latest:generateContent?key=${userGeminiKey}`;
+            const res = await fetch(apiUrl, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              signal: controller.signal,
+              body: JSON.stringify({
+                contents: [{
+                  role: 'user',
+                  parts: [
+                    { text: prompt },
+                    { inlineData: { mimeType: mimeType, data: pureBase64 } }
+                  ]
+                }],
+                generationConfig: { responseMimeType: 'application/json' }
+              })
+            });
+            clearTimeout(timeoutId);
+            if (res.ok) {
+              const data = await res.json();
+              const textRes = data.candidates?.[0]?.content?.parts?.[0]?.text;
+              if (textRes) {
+                const parsed = extractJsonClient(textRes);
+                let wt = parsed ? parsed.weight : null;
+                if (typeof wt === 'string') wt = parseFloat(wt.replace(/[^0-9.]/g, ''));
+                if (wt && !isNaN(Number(wt)) && Number(wt) > 0) {
+                  return {
+                    weight: Number(wt),
+                    unit: (parsed && parsed.unit) || '斤',
+                    confidence: (parsed && parsed.confidence) || 'high',
+                    model: 'gemini-flash-lite-latest'
+                  };
                 }
               }
-            } catch (err) {
-              console.warn(`Direct ${model} call error:`, err);
             }
+          } catch (err) {
+            console.warn('Direct fallback call error:', err);
           }
         }
 
@@ -2440,8 +2445,17 @@
 
     // Auto-update Service Worker & ensure latest client code is active
     if ('serviceWorker' in navigator) {
+      if ('caches' in window) {
+        caches.keys().then(names => {
+          for (let name of names) {
+            if (name !== 'tirz-tracker-v4.0') {
+              caches.delete(name);
+            }
+          }
+        });
+      }
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' })
+        navigator.serviceWorker.register('/sw.js?v=4.0', { updateViaCache: 'none' })
           .then((registration) => {
             registration.update();
             registration.onupdatefound = () => {

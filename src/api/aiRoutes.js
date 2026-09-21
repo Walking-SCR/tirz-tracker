@@ -58,23 +58,34 @@ export async function handleAIRoutes(request, env, url, session) {
     const mimeMatch = imageBase64.match(/^data:([^;]+);base64,/);
     const mimeType = mimeMatch ? mimeMatch[1] : 'image/jpeg';
     const pureBase64 = imageBase64.replace(/^data:[^;]+;base64,/, '').replace(/\s/g, '');
+
+    if (!pureBase64 || pureBase64.length < 100) {
+      return new Response(JSON.stringify({
+        error: 'INVALID_IMAGE',
+        message: '未获取到有效的秤面照片数据'
+      }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+
     const prompt = `You are a high-speed digital weight scale OCR engine. Look at the bathroom scale photo (including white or colored LED glowing digits under glass, LCD displays, and 7-segment numbers). Extract the weight numeric reading. Return ONLY a valid JSON: {"weight": number, "unit": "斤" or "kg", "confidence": "high"}. Example: {"weight": 168.5, "unit": "斤", "confidence": "high"}`;
 
     const modelsToTry = [
       'gemini-flash-lite-latest',
-      'gemini-3.1-flash-lite',
-      'gemini-3.6-flash',
-      'gemini-3.5-flash-lite',
-      'gemini-flash-latest'
+      'gemini-3.1-flash-lite'
     ];
 
     let lastError = null;
     for (const model of modelsToTry) {
       try {
         const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 6000);
         const res = await fetch(apiUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
+          signal: controller.signal,
           body: JSON.stringify({
             contents: [{
               role: 'user',
@@ -88,10 +99,15 @@ export async function handleAIRoutes(request, env, url, session) {
             }
           })
         });
+        clearTimeout(timeoutId);
 
         if (!res.ok) {
           const errText = await res.text().catch(() => '');
           lastError = new Error(`Gemini ${model} HTTP ${res.status}: ${errText}`);
+          // If 400 Bad Request or 403 Forbidden, retrying other models won't help; stop immediately to save quota
+          if (res.status === 400 || res.status === 403) {
+            break;
+          }
           continue;
         }
 
