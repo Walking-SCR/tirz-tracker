@@ -22,7 +22,7 @@
   <!-- Phosphor Icons -->
   <script src="https://unpkg.com/@phosphor-icons/web"></script>
   <!-- HEIC/HEIF fallback for iPhone photo uploads -->
-  <script src="https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js"></script>
+  <script src="vendor/heic2any.min.js"></script>
 
   <script>
     tailwind.config = {
@@ -1519,17 +1519,21 @@
 
     function fallbackFileReader(file, resolve) {
       const isHeic = /image\/(?:heic|heif)/i.test(file.type || '') || /\.hei[cf]$/i.test(file.name || '');
-      if (isHeic && typeof window.heic2any === 'function') {
+      if (isHeic) {
+        if (typeof window.heic2any !== 'function') {
+          resolve('');
+          return;
+        }
         window.heic2any({ blob: file, toType: 'image/jpeg', quality: 0.82 })
           .then((converted) => {
             const blob = Array.isArray(converted) ? converted[0] : converted;
             if (!blob) throw new Error('HEIC conversion returned no data');
             resizeBlobToJpegDataUrl(blob, 800, 0.72).then((dataUrl) => {
               if (dataUrl) resolve(dataUrl);
-              else readFileAsDataUrl(file, resolve);
+              else resolve('');
             });
           })
-          .catch(() => readFileAsDataUrl(file, resolve));
+          .catch(() => resolve(''));
         return;
       }
       readFileAsDataUrl(file, resolve);
@@ -1663,7 +1667,7 @@
 
       async function analyzeScaleWithGemini(base64Image) {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 15000);
+        const timeoutId = setTimeout(() => controller.abort(), 20000);
 
         try {
           const res = await fetch(`${API_BASE}/api/ai/analyze-scale`, {
@@ -1754,6 +1758,11 @@
         try {
           // Optimized high-speed compression (800px max, 0.72 quality)
           const compressed = await compressScaleImage(file, 800, 0.72);
+          if (!compressed || !compressed.startsWith('data:image/')) {
+            const conversionError = new Error('识别超时，请重试');
+            conversionError.code = 'AI_UPSTREAM_TIMEOUT';
+            throw conversionError;
+          }
           currentParsedImageBase64 = compressed;
           if (confirmPhotoThumb) confirmPhotoThumb.src = compressed;
 
@@ -1811,13 +1820,13 @@
             } else if (err && err.code === 'AI_BAD_REQUEST') {
               displayMsg = '图片格式或内容无法被 Gemini 处理，请重新拍摄';
             } else if (err && (err.code === 'UNSUPPORTED_IMAGE_TYPE' || err.code === 'INVALID_IMAGE')) {
-              displayMsg = '图片格式不受支持，请选择 HEIC、JPG、PNG 或 WebP 图片';
+              displayMsg = '图片处理失败，请重试';
             } else if (rawMsg.includes('429') || rawMsg.includes('频繁')) {
               displayMsg = 'API 接口请求频繁，请稍后重试';
             } else if (rawMsg.includes('400') || rawMsg.includes('无法解析')) {
               displayMsg = '秤面照片未能解析，请对准屏幕重拍';
-            } else if (rawMsg.includes('AbortError') || rawMsg.includes('timeout') || rawMsg.includes('超时')) {
-              displayMsg = '云端识别超时，请手动输入斤数';
+            } else if (err?.name === 'AbortError' || /aborted|timeout|超时/i.test(rawMsg)) {
+              displayMsg = '识别超时，请重试';
             }
             aiDetectConfidence.textContent = displayMsg;
           }
