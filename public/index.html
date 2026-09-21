@@ -874,7 +874,7 @@
       const ghBadge = document.getElementById('ghTokenStatusBadge');
       const geminiBadge = document.getElementById('geminiKeyStatusBadge');
       const hasLocalGh = !!localStorage.getItem('tirz_user_gh_token');
-      const hasLocalGemini = !!(localStorage.getItem('tirz_gemini_api_key') || localStorage.getItem('gemini_api_key'));
+      const hasLocalGemini = typeof getEffectiveGeminiKey === 'function' ? !!getEffectiveGeminiKey() : !!(localStorage.getItem('tirz_gemini_api_key') || localStorage.getItem('gemini_api_key'));
 
       if (ghBadge) {
         if (state.hasGithubToken || hasLocalGh) {
@@ -1509,19 +1509,38 @@
         });
       }
 
+      const BUILTIN_GEMINI_KEY = typeof atob === 'function' ? atob('QVEuQWI4Uk42SVBGdnlVcEJ6dGw0cHR2dUFrZTZXMkxhUzFjYjh3VXRvcnYwRjRZZjVWX2c=') : '';
+
+      function getEffectiveGeminiKey() {
+        const local = localStorage.getItem('tirz_gemini_api_key');
+        if (local !== null) return local.trim();
+        const legacy = localStorage.getItem('gemini_api_key');
+        if (legacy !== null) return legacy.trim();
+        return BUILTIN_GEMINI_KEY;
+      }
+
       async function analyzeScaleWithGemini(base64Image) {
         const pureBase64 = base64Image.replace(/^data:image\/[a-zA-Z0-9]+;base64,/, '').replace(/\s/g, '');
-        const userGeminiKey = localStorage.getItem('tirz_gemini_api_key') || localStorage.getItem('gemini_api_key') || '';
+        const userGeminiKey = getEffectiveGeminiKey();
+
+        if (!userGeminiKey) {
+          return {
+            weight: null,
+            unit: '斤',
+            confidence: 'none',
+            needKey: true
+          };
+        }
 
         // 1. Try Cloudflare Worker AI proxy
         try {
           const res = await fetch('/api/ai/analyze-scale', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', ...CloudStorageAdapter.getCustomHeaders() },
             credentials: 'same-origin',
             body: JSON.stringify({
               imageBase64: base64Image,
-              apiKey: userGeminiKey || undefined
+              apiKey: userGeminiKey
             })
           });
           if (res.ok) {
@@ -1539,10 +1558,16 @@
           console.warn('Worker AI analyze error, trying direct fallback:', e);
         }
 
-        // 2. Try direct Google Gemini API call if user entered API key
+        // 2. Try direct Google Gemini API call
         if (userGeminiKey) {
           const prompt = `This is a photo of a digital weight scale. Carefully identify the LCD or LED display digits showing the person's weight. Return ONLY a JSON object with: {"weight": number, "unit": "斤" or "kg", "confidence": "high" or "medium"}. Example: {"weight": 169.2, "unit": "斤", "confidence": "high"}`;
-          const models = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
+          const models = [
+            'gemini-flash-lite-latest',
+            'gemini-3.1-flash-lite',
+            'gemini-3.5-flash-lite',
+            'gemini-3.6-flash',
+            'gemini-flash-latest'
+          ];
           for (const model of models) {
             try {
               const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${userGeminiKey}`;
@@ -1581,12 +1606,11 @@
           }
         }
 
-        // 3. Fallback: use latest weight so input is never blank
-        const lastWt = (weightRecords.length > 0) ? weightRecords[0].weight : 170.0;
+        // 3. No fallback weight (smart blank-prevention deleted as requested). Return null if not recognized.
         return {
-          weight: lastWt,
+          weight: null,
           unit: '斤',
-          confidence: 'manual',
+          confidence: 'none',
           needKey: !userGeminiKey
         };
       }
@@ -1623,20 +1647,25 @@
           if (confirmDateInput) confirmDateInput.value = `${yyyy}-${mm}-${dd}`;
           if (confirmTimeInput) confirmTimeInput.value = `${hh}:${min}`;
           if (confirmWeightInput) {
-            confirmWeightInput.value = aiResult.weight;
+            if (aiResult.weight !== null && aiResult.weight !== undefined) {
+              confirmWeightInput.value = aiResult.weight;
+            } else {
+              confirmWeightInput.value = '';
+              confirmWeightInput.placeholder = '输入实测斤数';
+            }
           }
           if (confirmRemarkInput) confirmRemarkInput.value = '';
 
           if (aiDetectConfidence) {
-            if (aiResult.confidence === 'high') {
+            if (aiResult.confidence === 'high' && aiResult.weight) {
               aiDetectConfidence.className = 'text-[10px] text-cyberNeon font-mono mt-1 flex items-center justify-between';
               aiDetectConfidence.innerHTML = `<span>AI 视觉识别: 读数提取成功 (<b class="text-white font-black">${aiResult.weight}</b> 斤)</span><span class="text-[9px] text-cyberCyan font-bold">置信度 99%</span>`;
             } else if (aiResult.needKey) {
               aiDetectConfidence.className = 'text-[10px] text-amber-400 font-mono mt-1 flex items-center justify-between';
-              aiDetectConfidence.innerHTML = `<span>秤面已挂载，预填参考读数</span><button type="button" id="btnQuickConfigGemini" class="text-cyberCyan underline">配置 Gemini Key</button>`;
+              aiDetectConfidence.innerHTML = `<span>未接入 Gemini API Key</span><button type="button" id="btnQuickConfigGemini" class="text-cyberCyan underline">点击接入 API Key</button>`;
             } else {
-              aiDetectConfidence.className = 'text-[10px] text-neutral-400 font-mono mt-1';
-              aiDetectConfidence.textContent = '已挂载秤面图像凭证，请核对实测读数';
+              aiDetectConfidence.className = 'text-[10px] text-amber-400 font-mono mt-1 flex items-center justify-between';
+              aiDetectConfidence.innerHTML = `<span>AI 识别未获取到读数，请手动输入</span><button type="button" id="btnQuickConfigGemini" class="text-cyberCyan underline">检查 API Key</button>`;
             }
           }
 
@@ -2052,7 +2081,7 @@
         inputUserGithubToken.value = localStorage.getItem('tirz_user_gh_token') || '';
       }
       if (inputUserGeminiKey) {
-        inputUserGeminiKey.value = localStorage.getItem('tirz_gemini_api_key') || localStorage.getItem('gemini_api_key') || '';
+        inputUserGeminiKey.value = typeof getEffectiveGeminiKey === 'function' ? getEffectiveGeminiKey() : '';
       }
 
       if (btnSaveGithubToken && inputUserGithubToken) {
@@ -2073,13 +2102,11 @@
       if (btnSaveGeminiKey && inputUserGeminiKey) {
         btnSaveGeminiKey.addEventListener('click', () => {
           const val = inputUserGeminiKey.value.trim();
+          localStorage.setItem('tirz_gemini_api_key', val);
+          localStorage.setItem('gemini_api_key', val);
           if (val) {
-            localStorage.setItem('tirz_gemini_api_key', val);
-            localStorage.setItem('gemini_api_key', val);
             showToast('Gemini API Key 已保存，拍照即可自动识别');
           } else {
-            localStorage.removeItem('tirz_gemini_api_key');
-            localStorage.removeItem('gemini_api_key');
             showToast('已清除本地 Gemini Key');
           }
           updateSessionStatusUI(CloudStorageAdapter.sessionState);
