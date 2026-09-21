@@ -741,6 +741,7 @@
           headers: this.getCustomHeaders(),
           credentials: 'same-origin'
         });
+        if (res.status === 404) return true;
         if (!res.ok) {
           const data = await res.json().catch(() => ({}));
           throw new Error(data.message || '删除记录失败');
@@ -807,9 +808,139 @@
     let targetRecordForPhotoUpdate = null;
     let pendingConfirmAction = null;
 
-    // All biometric telemetry data and photos are stored exclusively in the private tirz-tracker-data repo
-    const defaultDoses = [];
-    const defaultWeights = [];
+    // Baseline biometric telemetry data and photos (ensures PWA/first open is never blank)
+    const defaultDoses = [
+      {
+        id: "dose-1",
+        seq: "第一针",
+        amount: "2.5ml",
+        date: "2026-09-12",
+        time: "23:10",
+        weight: 174.7,
+        site: "腹部左侧",
+        timestamp: 1789225800000
+      },
+      {
+        id: "dose-2",
+        seq: "第二针",
+        amount: "2.5ml",
+        date: "2026-09-19",
+        time: "23:57",
+        weight: 170.3,
+        site: "腹部右侧",
+        timestamp: 1789833420000
+      }
+    ];
+    const defaultWeights = [
+      {
+        id: "wt-1789225800000",
+        date: "2026-09-12",
+        time: "23:10",
+        weight: 174.7,
+        unit: "斤",
+        condition: "第一针打针时",
+        remark: "替尔泊肽起始基准体重 (第1针 2.5ml)",
+        photo: "images/2026/09/wt-1789225800000.png",
+        photoPath: "images/2026/09/wt-1789225800000.png",
+        timestamp: 1789225800000
+      },
+      {
+        id: "wt-1789344900000",
+        date: "2026-09-14",
+        time: "08:15",
+        weight: 171.5,
+        unit: "斤",
+        condition: "早上空腹",
+        remark: "首周吸收期 · 较首针已下潜 -3.2斤",
+        photo: "images/2026/09/wt-1789344900000.png",
+        photoPath: "images/2026/09/wt-1789344900000.png",
+        timestamp: 1789344900000
+      },
+      {
+        id: "wt-1789431600000",
+        date: "2026-09-15",
+        time: "08:20",
+        weight: 171.0,
+        unit: "斤",
+        condition: "早上空腹",
+        remark: "饱腹感持续，平稳下降",
+        photo: "images/2026/09/wt-1789431600000.png",
+        photoPath: "images/2026/09/wt-1789431600000.png",
+        timestamp: 1789431600000
+      },
+      {
+        id: "wt-1789522800000",
+        date: "2026-09-16",
+        time: "09:40",
+        weight: 169.9,
+        unit: "斤",
+        condition: "上午空腹",
+        remark: "首次跌破170斤大关！达成第1个里程碑",
+        photo: "images/2026/09/wt-1789522800000.png",
+        photoPath: "images/2026/09/wt-1789522800000.png",
+        timestamp: 1789522800000
+      },
+      {
+        id: "wt-1789608600000",
+        date: "2026-09-17",
+        time: "09:30",
+        weight: 168.5,
+        unit: "斤",
+        condition: "上午空腹",
+        remark: "持续平稳下降，体能精力正常",
+        photo: "images/2026/09/wt-1789608600000.png",
+        photoPath: "images/2026/09/wt-1789608600000.png",
+        timestamp: 1789608600000
+      },
+      {
+        id: "wt-1789694100000",
+        date: "2026-09-18",
+        time: "09:15",
+        weight: 167.9,
+        unit: "斤",
+        condition: "上午空腹",
+        remark: "体重进入平台低位微波动",
+        photo: "images/2026/09/wt-1789694100000.png",
+        photoPath: "images/2026/09/wt-1789694100000.png",
+        timestamp: 1789694100000
+      },
+      {
+        id: "wt-1789780200000",
+        date: "2026-09-19",
+        time: "09:10",
+        weight: 167.8,
+        unit: "斤",
+        condition: "上午空腹",
+        remark: "首周期空腹历史最低点（破峰纪录）",
+        photo: "images/2026/09/wt-1789780200000.png",
+        photoPath: "images/2026/09/wt-1789780200000.png",
+        timestamp: 1789780200000
+      },
+      {
+        id: "wt-1789824600000",
+        date: "2026-09-19",
+        time: "21:30",
+        weight: 170.3,
+        unit: "斤",
+        condition: "晚上吃饱水果",
+        remark: "晚餐进食较多水果与水分，第2针给药前测重",
+        photo: "images/2026/09/wt-1789824600000.png",
+        photoPath: "images/2026/09/wt-1789824600000.png",
+        timestamp: 1789824600000
+      },
+      {
+        id: "wt-1789866900000",
+        date: "2026-09-20",
+        time: "09:15",
+        weight: 169.6,
+        unit: "斤",
+        condition: "上午空腹",
+        remark: "第2针次日 · 迅速排空回落至 169.6斤",
+        photo: "images/2026/09/wt-1789866900000.png",
+        photoPath: "images/2026/09/wt-1789866900000.png",
+        timestamp: 1789866900000
+      }
+    ];
 
     // Helper functions
     function showToast(msg, isError = false) {
@@ -978,36 +1109,38 @@
         if (savedWeights) {
           try {
             const parsed = JSON.parse(savedWeights);
-            if (Array.isArray(parsed) && !JSON.stringify(parsed).includes('wt-0')) {
+            if (Array.isArray(parsed) && parsed.length > 0 && !JSON.stringify(parsed).includes('wt-0')) {
               weightRecords = parsed;
             } else {
-              weightRecords = [];
+              weightRecords = [...defaultWeights];
             }
           } catch (e) {
-            weightRecords = [];
+            weightRecords = [...defaultWeights];
           }
         } else {
-          weightRecords = [];
+          weightRecords = [...defaultWeights];
         }
 
         if (savedDoses) {
           try {
             const parsed = JSON.parse(savedDoses);
-            if (Array.isArray(parsed)) {
+            if (Array.isArray(parsed) && parsed.length > 0) {
               doseRecords = parsed;
             } else {
-              doseRecords = [];
+              doseRecords = [...defaultDoses];
             }
           } catch (e) {
-            doseRecords = [];
+            doseRecords = [...defaultDoses];
           }
         } else {
-          doseRecords = [];
+          doseRecords = [...defaultDoses];
         }
+        saveWeightsToStorage();
+        saveDosesToStorage();
       } catch (err) {
         console.warn('Storage load fallback', err);
-        weightRecords = [];
-        doseRecords = [];
+        weightRecords = [...defaultWeights];
+        doseRecords = [...defaultDoses];
       }
 
       refreshAllUI();
@@ -1123,7 +1256,7 @@
             <div class="flex items-center space-x-3">
               <div class="relative w-14 h-16 rounded-xl overflow-hidden bg-black/80 border border-cyberNeon/30 flex-shrink-0 cursor-pointer group/thumb hover:scale-105 transition" data-view-img="${item.id}">
                 ${photoUrl ? `
-                  <img src="${photoUrl}" onerror="this.onerror=null; this.classList.add('opacity-40');" class="w-full h-full object-cover">
+                  <img src="${photoUrl}" onerror="if(!this.dataset.retried){this.dataset.retried='1'; this.src='images/' + (item.photoPath ? item.photoPath.replace(/^images\\//, '') : (item.id + '.png'));} else { this.classList.add('opacity-40'); }" class="w-full h-full object-cover">
                   <div class="absolute inset-0 bg-black/30 flex items-center justify-center opacity-0 group-hover/thumb:opacity-100 transition">
                     <i class="ph-bold ph-magnifying-glass text-white text-xs"></i>
                   </div>
@@ -1196,11 +1329,13 @@
 
             if (CloudStorageAdapter.isAuthenticated()) {
               try {
-                await CloudStorageAdapter.deleteRecord(id);
-                showToast('已同步在私有数据仓库删除');
+                const delRes = await CloudStorageAdapter.deleteRecord(id);
+                if (delRes && delRes.cloudSync !== false) {
+                  showToast('已同步在私有数据仓库删除');
+                }
               } catch (err) {
                 console.warn('Cloud delete failed', err);
-                showToast('云端删除失败: ' + err.message, true);
+                showToast('本地已删除，云端同步: ' + err.message, true);
               }
             }
           });
@@ -1519,15 +1654,30 @@
       const BUILTIN_GEMINI_KEY = typeof atob === 'function' ? atob('QVEuQWI4Uk42SVBGdnlVcEJ6dGw0cHR2dUFrZTZXMkxhUzFjYjh3VXRvcnYwRjRZZjVWX2c=') : '';
 
       function getEffectiveGeminiKey() {
-        const local = localStorage.getItem('tirz_gemini_api_key');
-        if (local !== null) return local.trim();
-        const legacy = localStorage.getItem('gemini_api_key');
-        if (legacy !== null) return legacy.trim();
+        const local = (localStorage.getItem('tirz_gemini_api_key') || '').trim();
+        if (local) return local;
+        const legacy = (localStorage.getItem('gemini_api_key') || '').trim();
+        if (legacy) return legacy;
         return BUILTIN_GEMINI_KEY;
       }
 
+      function extractJsonClient(text) {
+        if (!text) return null;
+        try { return JSON.parse(text.trim()); } catch {}
+        const codeFenceMatch = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+        if (codeFenceMatch) {
+          try { return JSON.parse(codeFenceMatch[1].trim()); } catch {}
+        }
+        const firstBrace = text.indexOf('{');
+        const lastBrace = text.lastIndexOf('}');
+        if (firstBrace !== -1 && lastBrace > firstBrace) {
+          try { return JSON.parse(text.substring(firstBrace, lastBrace + 1)); } catch {}
+        }
+        return null;
+      }
+
       async function analyzeScaleWithGemini(base64Image) {
-        const pureBase64 = base64Image.replace(/^data:image\/[a-zA-Z0-9]+;base64,/, '').replace(/\s/g, '');
+        const pureBase64 = base64Image.replace(/^data:[^;]+;base64,/, '').replace(/\s/g, '');
         const userGeminiKey = getEffectiveGeminiKey();
 
         if (!userGeminiKey) {
@@ -1552,9 +1702,11 @@
           });
           if (res.ok) {
             const data = await res.json();
-            if (data.weight && !isNaN(Number(data.weight))) {
+            let wt = data.weight;
+            if (typeof wt === 'string') wt = parseFloat(wt.replace(/[^0-9.]/g, ''));
+            if (wt && !isNaN(Number(wt)) && Number(wt) > 0) {
               return {
-                weight: Number(data.weight),
+                weight: Number(wt),
                 unit: data.unit || '斤',
                 confidence: data.confidence || 'high',
                 model: data.model || 'Gemini'
@@ -1571,10 +1723,12 @@
           const models = [
             'gemini-flash-lite-latest',
             'gemini-3.1-flash-lite',
-            'gemini-3.5-flash-lite',
             'gemini-3.6-flash',
+            'gemini-3.5-flash-lite',
             'gemini-flash-latest'
           ];
+          const mimeMatch = base64Image.match(/^data:([^;]+);base64,/);
+          const mimeType = mimeMatch ? mimeMatch[1] : 'image/jpeg';
           for (const model of models) {
             try {
               const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${userGeminiKey}`;
@@ -1586,7 +1740,7 @@
                     role: 'user',
                     parts: [
                       { text: prompt },
-                      { inlineData: { mimeType: 'image/jpeg', data: pureBase64 } }
+                      { inlineData: { mimeType: mimeType, data: pureBase64 } }
                     ]
                   }],
                   generationConfig: { responseMimeType: 'application/json' }
@@ -1596,10 +1750,12 @@
                 const data = await res.json();
                 const textRes = data.candidates?.[0]?.content?.parts?.[0]?.text;
                 if (textRes) {
-                  const parsed = JSON.parse(textRes.replace(/^```json\s*/i, '').replace(/\s*```$/, '').trim());
-                  if (parsed.weight && !isNaN(Number(parsed.weight))) {
+                  const parsed = extractJsonClient(textRes);
+                  let wt = parsed ? parsed.weight : null;
+                  if (typeof wt === 'string') wt = parseFloat(wt.replace(/[^0-9.]/g, ''));
+                  if (wt && !isNaN(Number(wt)) && Number(wt) > 0) {
                     return {
-                      weight: Number(parsed.weight),
+                      weight: Number(wt),
                       unit: parsed.unit || '斤',
                       confidence: parsed.confidence || 'high',
                       model: model
@@ -1727,10 +1883,8 @@
           return;
         }
 
-        console.log(`[PWA Lifecycle] Re-opened from background (${source}), reloading page...`);
-        isAppReloading = true;
-        sessionStorage.setItem('tirz_reloaded_from_resume', 'true');
-        window.location.reload();
+        console.log(`[PWA Lifecycle] Re-opened from background (${source}), syncing latest data...`);
+        syncWithCloud(true);
       }
 
       if (btnPickGallery) btnPickGallery.addEventListener('click', () => { isMediaSelecting = true; });
@@ -1886,12 +2040,16 @@
             showToast('正在同步至私有数据仓库...');
             CloudStorageAdapter.createRecord(newRecord, currentParsedImageBase64 || null).then(saved => {
               if (saved) {
-                showToast('数据及秤面凭证已成功存入 GitHub 私有仓库！');
+                if (saved.cloudSync === false) {
+                  showToast('记录已保存在本地（云端数据仓库未配置）');
+                } else {
+                  showToast('数据及秤面凭证已成功存入 GitHub 私有仓库！');
+                }
                 syncWithCloud(true);
               }
             }).catch(err => {
               console.warn('Cloud save failed:', err);
-              showToast('云端同步失败: ' + err.message, true);
+              showToast('本地已保存，云端同步: ' + err.message, true);
             });
           }
         });

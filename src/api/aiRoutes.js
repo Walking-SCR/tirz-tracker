@@ -1,5 +1,22 @@
 // AI Scale Vision Analysis Route using Google Gemini Multimodal API
 
+function extractJson(text) {
+  if (!text) return null;
+  try {
+    return JSON.parse(text.trim());
+  } catch {}
+  const codeFenceMatch = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+  if (codeFenceMatch) {
+    try { return JSON.parse(codeFenceMatch[1].trim()); } catch {}
+  }
+  const firstBrace = text.indexOf('{');
+  const lastBrace = text.lastIndexOf('}');
+  if (firstBrace !== -1 && lastBrace > firstBrace) {
+    try { return JSON.parse(text.substring(firstBrace, lastBrace + 1)); } catch {}
+  }
+  return null;
+}
+
 export async function handleAIRoutes(request, env, url, session) {
   const path = url.pathname;
   const method = request.method;
@@ -24,12 +41,9 @@ export async function handleAIRoutes(request, env, url, session) {
     }
 
     const BUILTIN_GEMINI_KEY = typeof atob === 'function' ? atob('QVEuQWI4Uk42SVBGdnlVcEJ6dGw0cHR2dUFrZTZXMkxhUzFjYjh3VXRvcnYwRjRZZjVWX2c=') : '';
-    let apiKey;
-    if (body.apiKey !== undefined) {
-      apiKey = typeof body.apiKey === 'string' ? body.apiKey.trim() : '';
-    } else {
-      apiKey = (env.GEMINI_API_KEY && env.GEMINI_API_KEY.trim()) || BUILTIN_GEMINI_KEY;
-    }
+    const apiKey = (body.apiKey && typeof body.apiKey === 'string' && body.apiKey.trim()) ||
+                   (env.GEMINI_API_KEY && env.GEMINI_API_KEY.trim()) ||
+                   BUILTIN_GEMINI_KEY;
 
     if (!apiKey) {
       return new Response(JSON.stringify({
@@ -41,14 +55,16 @@ export async function handleAIRoutes(request, env, url, session) {
       });
     }
 
-    const pureBase64 = imageBase64.replace(/^data:image\/[a-zA-Z0-9]+;base64,/, '').replace(/\s/g, '');
+    const mimeMatch = imageBase64.match(/^data:([^;]+);base64,/);
+    const mimeType = mimeMatch ? mimeMatch[1] : 'image/jpeg';
+    const pureBase64 = imageBase64.replace(/^data:[^;]+;base64,/, '').replace(/\s/g, '');
     const prompt = `This is a photo of a digital weight scale. Carefully identify the LCD or LED display digits showing the person's weight. Return ONLY a JSON object with: {"weight": number, "unit": "斤" or "kg", "confidence": "high" or "medium"}. Example: {"weight": 169.2, "unit": "斤", "confidence": "high"}`;
 
     const modelsToTry = [
       'gemini-flash-lite-latest',
       'gemini-3.1-flash-lite',
-      'gemini-3.5-flash-lite',
       'gemini-3.6-flash',
+      'gemini-3.5-flash-lite',
       'gemini-flash-latest'
     ];
 
@@ -64,7 +80,7 @@ export async function handleAIRoutes(request, env, url, session) {
               role: 'user',
               parts: [
                 { text: prompt },
-                { inlineData: { mimeType: 'image/jpeg', data: pureBase64 } }
+                { inlineData: { mimeType: mimeType, data: pureBase64 } }
               ]
             }],
             generationConfig: {
@@ -86,14 +102,23 @@ export async function handleAIRoutes(request, env, url, session) {
           continue;
         }
 
-        // Clean markdown backticks if any
-        const cleanedJson = textResponse.replace(/^```json\s*/i, '').replace(/\s*```$/, '').trim();
-        const parsed = JSON.parse(cleanedJson);
+        const parsed = extractJson(textResponse);
+        if (!parsed) {
+          lastError = new Error(`Gemini ${model} 返回非标准 JSON: ${textResponse.slice(0, 100)}`);
+          continue;
+        }
 
-        if (parsed.weight && !isNaN(Number(parsed.weight))) {
+        let wt = parsed.weight;
+        if (typeof wt === 'string') {
+          wt = parseFloat(wt.replace(/[^0-9.]/g, ''));
+        } else {
+          wt = Number(wt);
+        }
+
+        if (!isNaN(wt) && wt > 0) {
           return new Response(JSON.stringify({
             success: true,
-            weight: Number(parsed.weight),
+            weight: wt,
             unit: parsed.unit || '斤',
             confidence: parsed.confidence || 'high',
             model: model

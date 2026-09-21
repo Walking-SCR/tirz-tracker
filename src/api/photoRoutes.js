@@ -6,7 +6,7 @@ export async function handlePhotoRoutes(request, env, url, session) {
 
   // Match /api/photos/2026/09/wt-xxxx.webp or /api/photos/images/2026/09/wt-xxxx.webp
   const photoMatch = path.match(/^\/api\/photos\/(?:images\/)?(\d{4})\/(\d{2})\/([a-zA-Z0-9_.-]+)$/);
-  if (photoMatch && method === 'GET') {
+  if (photoMatch && (method === 'GET' || method === 'HEAD')) {
     const [, yyyy, mm, filename] = photoMatch;
     const photoPath = `images/${yyyy}/${mm}/${filename}`;
 
@@ -29,14 +29,31 @@ export async function handlePhotoRoutes(request, env, url, session) {
 
     // Fallback to static assets if available
     if (env.ASSETS) {
-      try {
-        const assetUrl = new URL(`/${photoPath}`, request.url);
-        const assetRes = await env.ASSETS.fetch(new Request(assetUrl, request));
-        if (assetRes && assetRes.status < 400) {
-          return assetRes;
+      const candidates = [photoPath];
+      if (filename.endsWith('.webp')) {
+        candidates.push(`images/${yyyy}/${mm}/${filename.replace(/\.webp$/, '.png')}`);
+      } else if (filename.endsWith('.png')) {
+        candidates.push(`images/${yyyy}/${mm}/${filename.replace(/\.png$/, '.webp')}`);
+      }
+
+      for (const candidate of candidates) {
+        try {
+          const assetUrl = new URL(`/${candidate}`, request.url);
+          const assetRes = await env.ASSETS.fetch(new Request(assetUrl, request));
+          if (assetRes && assetRes.status < 400) {
+            const contentType = candidate.endsWith('.png') ? 'image/png' : 'image/webp';
+            const headers = new Headers(assetRes.headers);
+            headers.set('Content-Type', contentType);
+            headers.set('Cache-Control', 'public, max-age=86400');
+            headers.set('X-Content-Type-Options', 'nosniff');
+            return new Response(assetRes.body, {
+              status: assetRes.status,
+              headers
+            });
+          }
+        } catch (assetErr) {
+          console.warn('Asset fetch error:', assetErr);
         }
-      } catch (assetErr) {
-        console.warn('Asset fetch error:', assetErr);
       }
     }
 

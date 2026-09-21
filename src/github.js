@@ -143,7 +143,25 @@ export async function getRecords(env) {
 export async function saveRecords(env, records, message = 'Update biometric records') {
   const existing = await getFile(env, 'data/records.json');
   const sha = existing ? existing.sha : null;
-  const jsonStr = JSON.stringify(records, null, 2);
+  let dataToSave;
+  if (existing && existing.content) {
+    try {
+      const parsed = JSON.parse(base64ToUtf8(existing.content));
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        parsed.weights = records;
+        parsed.lastUpdated = new Date().toISOString();
+        dataToSave = parsed;
+      }
+    } catch (e) {}
+  }
+  if (!dataToSave) {
+    dataToSave = {
+      version: '2.0',
+      lastUpdated: new Date().toISOString(),
+      weights: records
+    };
+  }
+  const jsonStr = JSON.stringify(dataToSave, null, 2);
   const b64 = utf8ToBase64(jsonStr);
   return await putFile(env, 'data/records.json', b64, message, sha);
 }

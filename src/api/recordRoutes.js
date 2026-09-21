@@ -87,6 +87,17 @@ export async function handleRecordRoutes(request, env, url, session) {
       updatedAt: new Date().toISOString()
     };
 
+    if (!env.GITHUB_TOKEN) {
+      return new Response(JSON.stringify({
+        success: true,
+        record: newRecord,
+        cloudSync: false,
+        message: '未配置 GitHub Token，记录已保存在本地但未同步到私有仓库'
+      }), {
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+
     try {
       const { records } = await getRecords(env);
       records.unshift(newRecord);
@@ -160,30 +171,46 @@ export async function handleRecordRoutes(request, env, url, session) {
   const delTargetId = delMatch ? delMatch[1] : (path === '/api/records' ? url.searchParams.get('id') : null);
   if (delTargetId && method === 'DELETE') {
     const targetId = delTargetId;
-    const { records } = await getRecords(env);
-    const target = records.find(r => r.id === targetId);
-    if (!target) {
-      return new Response(JSON.stringify({ error: 'NOT_FOUND', message: '记录不存在' }), { status: 404 });
+    if (!env.GITHUB_TOKEN) {
+      return new Response(JSON.stringify({ success: true, id: targetId, cloudSync: false }), {
+        headers: { 'Content-Type': 'application/json' }
+      });
     }
 
-    const updated = records.filter(r => r.id !== targetId);
-    await saveRecords(env, updated, `Delete record ${targetId}`);
-
-    // Clean up associated photo from private repo if exists (best effort)
-    if (target.photo && target.photo.startsWith('images/')) {
-      try {
-        const photoFile = await getFile(env, target.photo);
-        if (photoFile && photoFile.sha) {
-          await deleteFile(env, target.photo, photoFile.sha, `Delete associated photo ${target.photo}`);
-        }
-      } catch (err) {
-        console.warn('Failed to delete photo on record delete', err);
+    try {
+      const { records } = await getRecords(env);
+      const target = records.find(r => r.id === targetId);
+      if (!target) {
+        return new Response(JSON.stringify({ success: true, id: targetId, message: '记录已在本地移除' }), {
+          headers: { 'Content-Type': 'application/json' }
+        });
       }
-    }
 
-    return new Response(JSON.stringify({ success: true, id: targetId }), {
-      headers: { 'Content-Type': 'application/json' }
-    });
+      const updated = records.filter(r => r.id !== targetId);
+      await saveRecords(env, updated, `Delete record ${targetId}`);
+
+      // Clean up associated photo from private repo if exists (best effort)
+      if (target.photo && target.photo.startsWith('images/')) {
+        try {
+          const photoFile = await getFile(env, target.photo);
+          if (photoFile && photoFile.sha) {
+            await deleteFile(env, target.photo, photoFile.sha, `Delete associated photo ${target.photo}`);
+          }
+        } catch (err) {
+          console.warn('Failed to delete photo on record delete', err);
+        }
+      }
+
+      return new Response(JSON.stringify({ success: true, id: targetId }), {
+        headers: { 'Content-Type': 'application/json' }
+      });
+    } catch (delErr) {
+      console.error('Delete record failed:', delErr);
+      return new Response(JSON.stringify({
+        error: 'RECORD_DELETE_FAILED',
+        message: '数据删除失败: ' + delErr.message
+      }), { status: 500, headers: { 'Content-Type': 'application/json' } });
+    }
   }
 
   return null;
