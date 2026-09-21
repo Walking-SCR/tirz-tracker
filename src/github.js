@@ -216,9 +216,21 @@ export async function saveDoses(env, doses, message = 'Update GLP-1 doses') {
   return await putFile(env, 'data/doses.json', b64, message, sha);
 }
 
-// Upload a WebP image directly to images/YYYY/MM/*.webp
+function imageExtensionFromDataUrl(base64Data) {
+  const match = String(base64Data || '').match(/^data:([^;]+);base64,/i);
+  const mime = (match ? match[1] : '').toLowerCase();
+  if (mime === 'image/png') return 'png';
+  if (mime === 'image/jpeg' || mime === 'image/jpg') return 'jpg';
+  if (mime === 'image/heic') return 'heic';
+  if (mime === 'image/heif') return 'heif';
+  return 'webp';
+}
+
+// Upload the photo using an extension that matches its actual MIME type.
 export async function uploadPhoto(env, year, month, filename, base64Data) {
-  const targetPath = `images/${year}/${month}/${filename}`;
+  const extension = imageExtensionFromDataUrl(base64Data);
+  const baseName = String(filename || 'photo').replace(/\.[a-z0-9]+$/i, '');
+  const targetPath = `images/${year}/${month}/${baseName}.${extension}`;
   const pureBase64 = base64Data.replace(/^data:image\/[a-z0-9]+;base64,/, '').replace(/\s/g, '');
   const commitRes = await putFile(env, targetPath, pureBase64, `Upload scale photo ${filename}`);
   return {
@@ -238,7 +250,13 @@ export async function fetchPrivatePhoto(env, photoPath) {
     bytes[i] = binary.charCodeAt(i);
   }
 
-  const contentType = photoPath.endsWith('.png') ? 'image/png' : (photoPath.endsWith('.jpg') || photoPath.endsWith('.jpeg')) ? 'image/jpeg' : 'image/webp';
+  const contentType = photoPath.endsWith('.png')
+    ? 'image/png'
+    : (photoPath.endsWith('.jpg') || photoPath.endsWith('.jpeg'))
+      ? 'image/jpeg'
+      : (photoPath.endsWith('.heic')
+        ? 'image/heic'
+        : (photoPath.endsWith('.heif') ? 'image/heif' : 'image/webp'));
   return {
     body: bytes,
     contentType: contentType

@@ -57,6 +57,30 @@ export async function handleRecordRoutes(request, env, url, session) {
     let photoPath = '';
     let uploadedSha = null;
 
+    // Do not attempt a GitHub write when the Worker has no repository token.
+    // The record remains a successful local save and can be synced after the
+    // administrator configures GITHUB_TOKEN.
+    if (!env.GITHUB_TOKEN) {
+      return new Response(JSON.stringify({
+        success: true,
+        record: {
+          id: recordId,
+          date,
+          time: time || '08:00',
+          weight: parseFloat(weight),
+          unit: unit || '斤',
+          condition: condition || '早上空腹',
+          remark: remark || '',
+          photo: '',
+          timestamp,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        },
+        cloudSync: false,
+        message: '记录已保存在本地，未配置 GitHub Token'
+      }), { headers: { 'Content-Type': 'application/json' } });
+    }
+
     // Upload photo if base64 provided
     if (photoBase64 && typeof photoBase64 === 'string' && photoBase64.startsWith('data:image')) {
       try {
@@ -66,10 +90,13 @@ export async function handleRecordRoutes(request, env, url, session) {
         uploadedSha = uploadRes.sha;
       } catch (uploadErr) {
         console.error('Photo upload failed:', uploadErr);
+        const githubAuthFailed = /GitHub putFile .* error 401/.test(String(uploadErr?.message || ''));
         return new Response(JSON.stringify({
-          error: 'PHOTO_UPLOAD_FAILED',
-          message: '秤面照片上传失败: ' + uploadErr.message
-        }), { status: 500 });
+          error: githubAuthFailed ? 'GITHUB_AUTH_FAILED' : 'PHOTO_UPLOAD_FAILED',
+          message: githubAuthFailed
+            ? 'GitHub Token 无效或已过期，请重新配置 GITHUB_TOKEN'
+            : '秤面照片上传失败: ' + uploadErr.message
+        }), { status: githubAuthFailed ? 503 : 500 });
       }
     }
 
