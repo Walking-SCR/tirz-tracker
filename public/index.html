@@ -1536,7 +1536,9 @@
           if (objectUrl) URL.revokeObjectURL(objectUrl);
           let width = img.naturalWidth || img.width;
           let height = img.naturalHeight || img.height;
-          if (!width || !height) return resolve(null);
+          if (!width || !height) {
+            return fallbackFileReader(file, (dataUrl) => resolve(dataUrl ? { dataUrl, canvas: null } : null));
+          }
           if (width > height) {
             if (width > maxDimension) {
               height = Math.round((height * maxDimension) / width);
@@ -1560,10 +1562,10 @@
         };
         img.onerror = () => {
           if (objectUrl) URL.revokeObjectURL(objectUrl);
-          resolve(null);
+          fallbackFileReader(file, (dataUrl) => resolve(dataUrl ? { dataUrl, canvas: null } : null));
         };
         if (objectUrl) img.src = objectUrl;
-        else resolve(null);
+        else fallbackFileReader(file, (dataUrl) => resolve(dataUrl ? { dataUrl, canvas: null } : null));
       });
     }
 
@@ -1723,7 +1725,7 @@
 
       async function analyzeScaleWithGemini(base64Image) {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 12000);
+        const timeoutId = setTimeout(() => controller.abort(), 20000);
 
         try {
           const res = await fetch(`${API_BASE}/api/ai/analyze-scale`, {
