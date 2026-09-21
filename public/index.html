@@ -21,6 +21,8 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <!-- Phosphor Icons -->
   <script src="https://unpkg.com/@phosphor-icons/web"></script>
+  <!-- HEIC/HEIF fallback for iPhone photo uploads -->
+  <script src="https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js"></script>
 
   <script>
     tailwind.config = {
@@ -1694,6 +1696,24 @@
     }
 
     function fallbackFileReader(file, resolve) {
+      const isHeic = /image\/(?:heic|heif)/i.test(file.type || '') || /\.hei[cf]$/i.test(file.name || '');
+      if (isHeic && typeof window.heic2any === 'function') {
+        window.heic2any({ blob: file, toType: 'image/jpeg', quality: 0.82 })
+          .then((converted) => {
+            const blob = Array.isArray(converted) ? converted[0] : converted;
+            if (!blob) throw new Error('HEIC conversion returned no data');
+            const reader = new FileReader();
+            reader.onload = (e) => resolve(e.target.result);
+            reader.onerror = () => readFileAsDataUrl(file, resolve);
+            reader.readAsDataURL(blob);
+          })
+          .catch(() => readFileAsDataUrl(file, resolve));
+        return;
+      }
+      readFileAsDataUrl(file, resolve);
+    }
+
+    function readFileAsDataUrl(file, resolve) {
       const reader = new FileReader();
       reader.onload = (e) => resolve(e.target.result);
       reader.onerror = () => resolve('');
