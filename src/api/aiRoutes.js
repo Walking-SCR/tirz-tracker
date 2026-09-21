@@ -100,8 +100,20 @@ export async function handleAIRoutes(request, env, url, session) {
       lastStatus = res.status;
       if (!res.ok) {
         upstreamStatuses.push(res.status);
+        const upstreamText = await res.text().catch(() => '');
+        let upstreamReason = upstreamText.slice(0, 240);
+        try {
+          const parsedError = JSON.parse(upstreamText);
+          upstreamReason = parsedError.error?.message || parsedError.message || upstreamReason;
+        } catch {}
         lastError = new Error(`Gemini upstream HTTP ${res.status}`);
-        logEvent('warn', 'ai_upstream_error', { requestId, model, status: res.status, durationMs: Date.now() - modelStartedAt });
+        logEvent('warn', 'ai_upstream_error', {
+          requestId,
+          model,
+          status: res.status,
+          reason: upstreamReason.replace(/[\r\n]+/g, ' ').slice(0, 240),
+          durationMs: Date.now() - modelStartedAt
+        });
         continue;
       }
       const data = await res.json();
