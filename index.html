@@ -1922,8 +1922,14 @@
             aiDetectConfidence.className = 'text-[10px] text-amber-400 font-mono mt-1';
             const rawMsg = (err && err.message) || '未能自动提取读数，请手动输入';
             let displayMsg = rawMsg;
-            if (rawMsg.includes('429') || rawMsg.includes('频繁')) {
-              displayMsg = 'API 接口请求频繁，请稍后或清除自定义 Key';
+            if (err && err.code === 'AI_AUTH_FAILED') {
+              displayMsg = 'Gemini API Key 无效或已过期，请联系管理员';
+            } else if (err && err.code === 'AI_RATE_LIMITED') {
+              displayMsg = 'Gemini 服务请求频繁或额度已用尽，请稍后重试';
+            } else if (err && err.code === 'AI_BAD_REQUEST') {
+              displayMsg = '图片格式或内容无法被 Gemini 处理，请重新拍摄';
+            } else if (rawMsg.includes('429') || rawMsg.includes('频繁')) {
+              displayMsg = 'API 接口请求频繁，请稍后重试';
             } else if (rawMsg.includes('400') || rawMsg.includes('无法解析')) {
               displayMsg = '秤面照片未能解析，请对准屏幕重拍';
             } else if (rawMsg.includes('AbortError') || rawMsg.includes('timeout') || rawMsg.includes('超时')) {

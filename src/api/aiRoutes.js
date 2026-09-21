@@ -80,6 +80,7 @@ export async function handleAIRoutes(request, env, url, session) {
   const modelsToTry = ['gemini-flash-lite-latest', 'gemini-3.1-flash-lite'];
   let lastError = null;
   let lastStatus = 502;
+  const upstreamStatuses = [];
 
   for (const model of modelsToTry) {
     const controller = new AbortController();
@@ -98,6 +99,7 @@ export async function handleAIRoutes(request, env, url, session) {
       });
       lastStatus = res.status;
       if (!res.ok) {
+        upstreamStatuses.push(res.status);
         lastError = new Error(`Gemini upstream HTTP ${res.status}`);
         logEvent('warn', 'ai_upstream_error', { requestId, model, status: res.status, durationMs: Date.now() - modelStartedAt });
         continue;
@@ -122,7 +124,27 @@ export async function handleAIRoutes(request, env, url, session) {
   }
 
   const timedOut = lastError?.name === 'AbortError';
-  const error = timedOut ? 'AI_UPSTREAM_TIMEOUT' : (lastStatus === 401 || lastStatus === 403 ? 'AI_AUTH_FAILED' : 'AI_RECOGNITION_FAILED');
+  const authFailed = upstreamStatuses.some(status => status === 401 || status === 403);
+  const rateLimited = upstreamStatuses.includes(429);
+  const badRequest = upstreamStatuses.includes(400);
+  const error = timedOut
+    ? 'AI_UPSTREAM_TIMEOUT'
+    : authFailed
+      ? 'AI_AUTH_FAILED'
+      : rateLimited
+        ? 'AI_RATE_LIMITED'
+        : badRequest
+          ? 'AI_BAD_REQUEST'
+          : 'AI_RECOGNITION_FAILED';
+  const message = timedOut
+    ? '识别服务响应超时，请稍后重试'
+    : authFailed
+      ? 'Gemini API Key 无效或已过期，请联系管理员'
+      : rateLimited
+        ? 'Gemini 服务请求频繁或额度已用尽，请稍后重试'
+        : badRequest
+          ? '图片格式或内容无法被 Gemini 处理，请重新拍摄'
+          : '识别服务暂时不可用，请稍后重试';
   logEvent('error', 'ai_request_failed', { requestId, error, upstreamStatus: lastStatus, durationMs: Date.now() - startedAt });
-  return jsonResponse({ error, message: timedOut ? '识别服务响应超时，请稍后重试' : '识别服务暂时不可用，请稍后重试' }, timedOut ? 504 : 502, requestId);
+  return jsonResponse({ error, message }, timedOut ? 504 : 502, requestId);
 }

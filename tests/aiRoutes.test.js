@@ -75,3 +75,17 @@ test('returns the normalized weight from the Gemini response', async () => {
     globalThis.fetch = originalFetch;
   }
 });
+
+test('maps Gemini authentication failures to an actionable error', async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response(JSON.stringify({ error: { message: 'unauthorized' } }), { status: 401 });
+  try {
+    const response = await handleAIRoutes(request({ imageBase64 }, { 'X-Request-ID': 'test-auth-failure' }), { GEMINI_API_KEY: 'server-key' }, url);
+    const body = await json(response);
+    assert.equal(response.status, 502);
+    assert.equal(body.error, 'AI_AUTH_FAILED');
+    assert.match(body.message, /API Key/);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
