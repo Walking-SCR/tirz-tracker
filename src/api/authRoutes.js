@@ -19,7 +19,9 @@ export async function handleAuthRoutes(request, env, url) {
       authenticated: !!session,
       email: session ? session.email : null,
       isDeviceBound: !!device,
-      allowedEmailHint: env.ALLOWED_EMAIL ? env.ALLOWED_EMAIL.replace(/(.{2})(.*)(@.*)/, '$1***$3') : null
+      allowedEmailHint: env.ALLOWED_EMAIL ? env.ALLOWED_EMAIL.replace(/(.{2})(.*)(@.*)/, '$1***$3') : null,
+      hasGithubToken: !!(env.GITHUB_TOKEN && env.GITHUB_TOKEN.trim()),
+      hasGeminiKey: !!(env.GEMINI_API_KEY && env.GEMINI_API_KEY.trim())
     }), {
       headers: { 'Content-Type': 'application/json' }
     });

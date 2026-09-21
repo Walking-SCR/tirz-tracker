@@ -1,11 +1,15 @@
 // GitHub REST API client for server-side Private DATA Repo operations
 
 function getHeaders(env) {
-  return {
-    'Authorization': `Bearer ${env.GITHUB_TOKEN}`,
+  const token = (env.GITHUB_TOKEN && env.GITHUB_TOKEN.trim()) || env._clientToken || '';
+  const headers = {
     'User-Agent': 'tirz-tracker-cloudflare-worker',
     'Accept': 'application/vnd.github.v3+json'
   };
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+  return headers;
 }
 
 function getDataRepo(env) {
@@ -197,29 +201,20 @@ export async function uploadPhoto(env, year, month, filename, base64Data) {
   };
 }
 
-// Stream or fetch a private photo
+// Fetch a private photo safely via GitHub API JSON to avoid 302 cross-domain redirect header stripping
 export async function fetchPrivatePhoto(env, photoPath) {
-  const owner = getOwner(env);
-  const repo = getDataRepo(env);
-  const branch = getBranch(env);
+  const file = await getFile(env, photoPath);
+  if (!file || !file.content) return null;
 
-  // Request raw media stream from GitHub
-  const url = `https://api.github.com/repos/${owner}/${repo}/contents/${photoPath}?ref=${branch}`;
-  const res = await fetch(url, {
-    headers: {
-      ...getHeaders(env),
-      'Accept': 'application/vnd.github.v3.raw'
-    }
-  });
-
-  if (!res.ok) {
-    if (res.status === 404) return null;
-    throw new Error(`Failed to fetch photo from GitHub: ${res.status}`);
+  const binary = atob(file.content.replace(/\s/g, ''));
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
   }
 
   const contentType = photoPath.endsWith('.png') ? 'image/png' : (photoPath.endsWith('.jpg') || photoPath.endsWith('.jpeg')) ? 'image/jpeg' : 'image/webp';
   return {
-    body: res.body,
+    body: bytes,
     contentType: contentType
   };
 }

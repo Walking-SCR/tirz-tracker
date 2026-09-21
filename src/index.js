@@ -3,6 +3,7 @@ import { handleAuthRoutes } from './api/authRoutes.js';
 import { handleRecordRoutes } from './api/recordRoutes.js';
 import { handleDoseRoutes } from './api/doseRoutes.js';
 import { handlePhotoRoutes } from './api/photoRoutes.js';
+import { handleAIRoutes } from './api/aiRoutes.js';
 import { getFallbackHtml } from './fallbackHtml.js';
 
 function addSecurityHeaders(response) {
@@ -42,9 +43,14 @@ export default {
       if (authRes) return addSecurityHeaders(authRes);
     }
 
-    // 3. API Routes (/api/records, /api/doses, /api/photos)
+    // 3. API Routes (/api/records, /api/doses, /api/photos, /api/ai)
     if (path.startsWith('/api/')) {
       const session = await getAuthSession(request, env);
+
+      if (path.startsWith('/api/ai/')) {
+        const aiRes = await handleAIRoutes(request, env, url, session);
+        if (aiRes) return addSecurityHeaders(aiRes);
+      }
 
       // Mutating requests strictly require authentication
       const isMutation = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(request.method);

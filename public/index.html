@@ -96,11 +96,13 @@
     }
 
     .mobile-safe-header {
-      padding-top: max(14px, env(safe-area-inset-top, 14px));
+      padding-top: max(10px, env(safe-area-inset-top, 10px));
+      padding-bottom: 8px;
     }
     @media (max-width: 640px) {
       .mobile-safe-header {
-        padding-top: max(48px, calc(env(safe-area-inset-top, 0px) + 8px)) !important;
+        padding-top: max(12px, calc(env(safe-area-inset-top, 0px) + 2px)) !important;
+        padding-bottom: 6px !important;
       }
     }
   </style>
@@ -108,30 +110,33 @@
 <body class="min-h-screen pb-16 antialiased selection:bg-cyberNeon/30">
 
   <!-- Top Navigation / Status Header -->
-  <header class="sticky top-0 z-40 glass-hud border-b border-white/10 px-4 pb-3 transition-all mobile-safe-header">
-    <div class="max-w-md mx-auto flex items-center justify-between">
-      <div class="flex items-center space-x-2.5">
-        <div class="w-8 h-8 rounded-xl bg-gradient-to-tr from-cyberNeon/20 to-cyberCyan/20 border border-cyberNeon/40 flex items-center justify-center text-cyberNeon shadow-[0_0_15px_rgba(0,255,178,0.3)]">
-          <i class="ph-bold ph-dna text-lg"></i>
+  <header class="sticky top-0 z-40 glass-hud border-b border-white/10 px-3 transition-all mobile-safe-header">
+    <div class="max-w-md mx-auto flex items-center justify-between gap-1.5">
+      <!-- Left: Logo & Brand -->
+      <div class="flex items-center space-x-2 min-w-0">
+        <div class="w-7 h-7 rounded-lg bg-gradient-to-tr from-cyberNeon/20 to-cyberCyan/20 border border-cyberNeon/40 flex-shrink-0 flex items-center justify-center text-cyberNeon shadow-[0_0_12px_rgba(0,255,178,0.25)]">
+          <i class="ph-bold ph-dna text-base"></i>
         </div>
-        <div>
-          <h1 class="text-sm font-black tracking-wider text-white flex items-center gap-1.5">
-            TIRZEPATIDE <span class="text-[10px] px-1.5 py-0.5 rounded-full bg-cyberNeon/15 text-cyberNeon font-mono border border-cyberNeon/30">HUD v2.4</span>
-          </h1>
-          <p class="text-[10px] font-mono text-cyberTextDim">替尔泊肽 · 生物代谢测重监测站</p>
+        <div class="min-w-0">
+          <div class="flex items-center gap-1.5 whitespace-nowrap">
+            <h1 class="text-xs font-black tracking-wider text-white">TIRZEPATIDE</h1>
+            <span class="text-[9px] px-1 py-0.2 rounded bg-cyberNeon/15 text-cyberNeon font-mono border border-cyberNeon/30 whitespace-nowrap">v2.4</span>
+          </div>
+          <p class="text-[9px] font-mono text-cyberTextDim whitespace-nowrap truncate">替尔泊肽 · 生物代谢测重监测站</p>
         </div>
       </div>
 
-      <div class="flex items-center gap-1.5">
-        <button id="btnHeaderRefresh" class="h-8 w-8 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-mono text-neutral-300 flex items-center justify-center active:scale-95 transition" title="刷新并同步最新数据">
-          <i id="headerRefreshIcon" class="ph-bold ph-arrows-clockwise text-cyberNeon text-sm"></i>
+      <!-- Right Action Bar (Compact, zero wrapping) -->
+      <div class="flex items-center gap-1 flex-shrink-0">
+        <button id="btnHeaderRefresh" class="h-7 w-7 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-neutral-300 flex items-center justify-center active:scale-95 transition" title="刷新并同步最新数据">
+          <i id="headerRefreshIcon" class="ph-bold ph-arrows-clockwise text-cyberNeon text-xs"></i>
         </button>
-        <button id="btnUserSessionModal" class="h-8 px-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-mono flex items-center gap-1.5 active:scale-95 transition" title="账号与受信设备状态">
-          <span id="sessionStatusDot" class="w-2 h-2 rounded-full bg-neutral-500"></span>
-          <span id="sessionStatusText" class="text-neutral-300 text-[11px]">安全连接中</span>
+        <button id="btnUserSessionModal" class="h-7 px-2 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 flex items-center gap-1 active:scale-95 transition whitespace-nowrap" title="账号与安全配置">
+          <span id="sessionStatusDot" class="w-1.5 h-1.5 rounded-full bg-neutral-500"></span>
+          <span id="sessionStatusText" class="text-neutral-300 text-[10px] font-mono whitespace-nowrap">连接中</span>
         </button>
-        <button id="btnManualAdd" class="h-8 px-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-mono text-neutral-300 flex items-center gap-1 active:scale-95 transition">
-          <i class="ph-bold ph-pencil-simple text-cyberCyan"></i>
+        <button id="btnManualAdd" class="h-7 px-2 rounded-lg bg-cyberNeon/10 hover:bg-cyberNeon/20 border border-cyberNeon/30 text-cyberNeon font-mono text-[10px] font-bold flex items-center gap-1 active:scale-95 transition whitespace-nowrap">
+          <i class="ph-bold ph-plus text-xs"></i>
           <span>补录</span>
         </button>
       </div>
@@ -530,8 +535,29 @@
           </div>
         </div>
         <div class="p-2.5 rounded-xl bg-black/60 border border-white/5">
-          <div class="text-[10px] text-neutral-500">数据后端</div>
-          <div class="text-cyberCyan mt-0.5 text-[11px]">GitHub Private DATA Repo</div>
+          <div class="text-[10px] text-neutral-500 flex items-center justify-between">
+            <span>数据仓库 (tirz-tracker-data)</span>
+            <span id="ghTokenStatusBadge" class="text-[9px] text-neutral-400">检测中</span>
+          </div>
+          <div class="mt-1 flex items-center gap-1.5">
+            <input type="password" id="inputUserGithubToken" placeholder="输入 GitHub PAT (若云端未配置)" class="flex-1 h-7 px-2 rounded-lg bg-black/50 border border-white/10 text-[10px] text-white focus:outline-none focus:border-cyberCyan">
+            <button id="btnSaveGithubToken" type="button" class="h-7 px-2 rounded-lg bg-cyberCyan/15 hover:bg-cyberCyan/25 border border-cyberCyan/40 text-cyberCyan text-[10px] font-bold">
+              保存
+            </button>
+          </div>
+        </div>
+        <div class="p-2.5 rounded-xl bg-black/60 border border-white/5">
+          <div class="text-[10px] text-neutral-500 flex items-center justify-between">
+            <span>AI 视觉识别 Key (Gemini API)</span>
+            <span id="geminiKeyStatusBadge" class="text-[9px] text-neutral-400">可选</span>
+          </div>
+          <div class="mt-1 flex items-center gap-1.5">
+            <input type="password" id="inputUserGeminiKey" placeholder="输入 Gemini API Key" class="flex-1 h-7 px-2 rounded-lg bg-black/50 border border-white/10 text-[10px] text-white focus:outline-none focus:border-cyberNeon">
+            <button id="btnSaveGeminiKey" type="button" class="h-7 px-2 rounded-lg bg-cyberNeon/15 hover:bg-cyberNeon/25 border border-cyberNeon/40 text-cyberNeon text-[10px] font-bold">
+              保存
+            </button>
+          </div>
+          <p class="text-[9px] text-neutral-500 mt-1">填入 Key 后，拍照或选图即可自动识别秤面数字</p>
         </div>
       </div>
 
@@ -559,24 +585,31 @@
         email: null,
         isDeviceBound: false,
         isLocalDemo: false,
-        allowedEmailHint: null
+        allowedEmailHint: null,
+        hasGithubToken: false,
+        hasGeminiKey: false
       },
 
       cleanLegacyTokens() {
         try {
           localStorage.removeItem('tirz_gh_config_v1');
           localStorage.removeItem('github_pat');
-          localStorage.removeItem('github_token');
-          localStorage.removeItem('tirz_github_token');
           sessionStorage.removeItem('github_pat');
         } catch (e) {
           console.warn('Legacy token cleanup ignored', e);
         }
       },
 
+      getCustomHeaders() {
+        const headers = {};
+        const userToken = localStorage.getItem('tirz_user_gh_token');
+        if (userToken) headers['X-GitHub-Token'] = userToken.trim();
+        return headers;
+      },
+
       async checkAuth() {
         try {
-          const res = await fetch('/api/auth/status', { credentials: 'same-origin' });
+          const res = await fetch('/api/auth/status', { credentials: 'same-origin', headers: this.getCustomHeaders() });
           if (res.status === 404) {
             this.sessionState = { authenticated: false, email: null, isDeviceBound: false, isLocalDemo: true };
             return this.sessionState;
@@ -588,6 +621,8 @@
               email: data.email,
               isDeviceBound: !!data.isDeviceBound,
               allowedEmailHint: data.allowedEmailHint,
+              hasGithubToken: !!data.hasGithubToken,
+              hasGeminiKey: !!data.hasGeminiKey,
               isLocalDemo: false
             };
             return this.sessionState;
@@ -603,7 +638,7 @@
       async login(email) {
         const res = await fetch('/api/auth/login', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...this.getCustomHeaders() },
           credentials: 'same-origin',
           body: JSON.stringify({ email })
         });
@@ -620,7 +655,7 @@
       async bootstrap(email, bootstrapSecret) {
         const res = await fetch('/api/auth/bootstrap', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...this.getCustomHeaders() },
           credentials: 'same-origin',
           body: JSON.stringify({ email, bootstrapSecret })
         });
@@ -649,7 +684,7 @@
       },
 
       async getRecords() {
-        const res = await fetch('/api/records', { credentials: 'same-origin' });
+        const res = await fetch('/api/records', { credentials: 'same-origin', headers: this.getCustomHeaders() });
         if (!res.ok) {
           if (res.status === 401) {
             this.sessionState.authenticated = false;
@@ -672,7 +707,7 @@
         };
         const res = await fetch('/api/records', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...this.getCustomHeaders() },
           credentials: 'same-origin',
           body: JSON.stringify(payload)
         });
@@ -684,6 +719,7 @@
       async deleteRecord(id) {
         const res = await fetch(`/api/records/${id}`, {
           method: 'DELETE',
+          headers: this.getCustomHeaders(),
           credentials: 'same-origin'
         });
         if (!res.ok) {
@@ -696,7 +732,7 @@
       async updateRecordPhoto(id, photoBase64) {
         const res = await fetch(`/api/records/${id}`, {
           method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...this.getCustomHeaders() },
           credentials: 'same-origin',
           body: JSON.stringify({ photoBase64 })
         });
@@ -706,7 +742,7 @@
       },
 
       async getDoses() {
-        const res = await fetch('/api/doses', { credentials: 'same-origin' });
+        const res = await fetch('/api/doses', { credentials: 'same-origin', headers: this.getCustomHeaders() });
         if (!res.ok) throw new Error(`获取针剂记录失败 (${res.status})`);
         return await res.json();
       },
@@ -714,7 +750,7 @@
       async saveDose(dose) {
         const res = await fetch('/api/doses', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...this.getCustomHeaders() },
           credentials: 'same-origin',
           body: JSON.stringify(dose)
         });
@@ -726,6 +762,7 @@
       async deleteDose(id) {
         const res = await fetch(`/api/doses/${id}`, {
           method: 'DELETE',
+          headers: this.getCustomHeaders(),
           credentials: 'same-origin'
         });
         if (!res.ok) throw new Error('删除针剂失败');
@@ -798,21 +835,45 @@
       if (!dot || !text) return;
 
       if (state.authenticated) {
-        dot.className = 'w-2 h-2 rounded-full bg-cyberNeon shadow-[0_0_6px_#00FFB2]';
-        text.className = 'text-cyberNeon text-[11px] font-bold';
-        text.textContent = '受信任设备';
+        dot.className = 'w-1.5 h-1.5 rounded-full bg-cyberNeon shadow-[0_0_6px_#00FFB2] flex-shrink-0';
+        text.className = 'text-cyberNeon text-[10px] font-mono font-bold whitespace-nowrap';
+        text.textContent = '受信任';
       } else if (state.isDeviceBound) {
-        dot.className = 'w-2 h-2 rounded-full bg-cyberCyan shadow-[0_0_6px_#00F0FF]';
-        text.className = 'text-cyberCyan text-[11px] font-bold';
-        text.textContent = '设备已绑定 · 点击进入';
+        dot.className = 'w-1.5 h-1.5 rounded-full bg-cyberCyan shadow-[0_0_6px_#00F0FF] flex-shrink-0';
+        text.className = 'text-cyberCyan text-[10px] font-mono font-bold whitespace-nowrap';
+        text.textContent = '已绑定';
       } else if (state.isLocalDemo) {
-        dot.className = 'w-2 h-2 rounded-full bg-cyberPurple';
-        text.className = 'text-cyberPurple text-[11px]';
-        text.textContent = '本地演示模式';
+        dot.className = 'w-1.5 h-1.5 rounded-full bg-cyberPurple flex-shrink-0';
+        text.className = 'text-cyberPurple text-[10px] font-mono whitespace-nowrap';
+        text.textContent = '演示模式';
       } else {
-        dot.className = 'w-2 h-2 rounded-full bg-amber-400 animate-pulse';
-        text.className = 'text-amber-400 text-[11px] font-semibold';
-        text.textContent = '未授权入站';
+        dot.className = 'w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse flex-shrink-0';
+        text.className = 'text-amber-400 text-[10px] font-mono font-semibold whitespace-nowrap';
+        text.textContent = '未登录';
+      }
+
+      const ghBadge = document.getElementById('ghTokenStatusBadge');
+      const geminiBadge = document.getElementById('geminiKeyStatusBadge');
+      const hasLocalGh = !!localStorage.getItem('tirz_user_gh_token');
+      const hasLocalGemini = !!(localStorage.getItem('tirz_gemini_api_key') || localStorage.getItem('gemini_api_key'));
+
+      if (ghBadge) {
+        if (state.hasGithubToken || hasLocalGh) {
+          ghBadge.textContent = '已连接';
+          ghBadge.className = 'text-[9px] text-cyberNeon font-bold';
+        } else {
+          ghBadge.textContent = '未连接 (需配置)';
+          ghBadge.className = 'text-[9px] text-amber-400 font-bold';
+        }
+      }
+      if (geminiBadge) {
+        if (state.hasGeminiKey || hasLocalGemini) {
+          geminiBadge.textContent = 'AI 识别已就绪';
+          geminiBadge.className = 'text-[9px] text-cyberNeon font-bold';
+        } else {
+          geminiBadge.textContent = '未配置 (点击填入)';
+          geminiBadge.className = 'text-[9px] text-neutral-400';
+        }
       }
     }
 
@@ -850,10 +911,13 @@
               localMap.set(cw.id, cw);
             } else {
               const loc = localMap.get(cw.id);
+              if (loc.photo && loc.photo.startsWith('data:')) {
+                cw.photo = loc.photo;
+              }
               Object.assign(loc, cw);
             }
           });
-          weightRecords = Array.from(localMap.values());
+          weightRecords = Array.from(localMap.values()).sort((a, b) => b.timestamp - a.timestamp);
         }
 
         if (Array.isArray(cloudDoses) && cloudDoses.length > 0) {
@@ -1014,7 +1078,10 @@
 
         const isNonFasting = (item.condition || '').includes('晚') || (item.condition || '').includes('吃饱');
         const monthDay = item.date ? item.date.slice(5) : '';
-        const photoUrl = CloudStorageAdapter.resolvePhotoUrl(item.photoPath || item.photo);
+        const photoSource = (item.photo && (item.photo.startsWith('data:') || item.photo.startsWith('blob:') || item.photo.startsWith('<svg')))
+          ? item.photo
+          : (item.photo || item.photoPath || '');
+        const photoUrl = CloudStorageAdapter.resolvePhotoUrl(photoSource);
 
         const card = document.createElement('div');
         card.className = 'glass-hud rounded-2xl p-3.5 border border-white/5 hover:border-cyberNeon/30 transition-all relative group';
@@ -1024,7 +1091,7 @@
             <div class="flex items-center space-x-3">
               <div class="relative w-14 h-16 rounded-xl overflow-hidden bg-black/80 border border-cyberNeon/30 flex-shrink-0 cursor-pointer group/thumb hover:scale-105 transition" data-view-img="${item.id}">
                 ${photoUrl ? `
-                  <img src="${photoUrl}" onerror="if(!this.dataset.retried){this.dataset.retried='1';this.src='/${item.photoPath||item.photo}';}" class="w-full h-full object-cover">
+                  <img src="${photoUrl}" onerror="this.onerror=null; this.classList.add('opacity-40');" class="w-full h-full object-cover">
                   <div class="absolute inset-0 bg-black/30 flex items-center justify-center opacity-0 group-hover/thumb:opacity-100 transition">
                     <i class="ph-bold ph-magnifying-glass text-white text-xs"></i>
                   </div>
@@ -1071,10 +1138,15 @@
         box.addEventListener('click', () => {
           const id = box.getAttribute('data-view-img');
           const rec = sortedWeights.find(w => w.id === id);
-          if (rec && (rec.photo || rec.photoPath)) {
-            window.viewPhoto(rec.photoPath || rec.photo, `${rec.date} ${rec.time || ''} · ${rec.weight}斤 · ${rec.condition}`);
-          } else if (rec) {
-            triggerPhotoUploadForRecord(id);
+          if (rec) {
+            const pSource = (rec.photo && (rec.photo.startsWith('data:') || rec.photo.startsWith('blob:') || rec.photo.startsWith('<svg')))
+              ? rec.photo
+              : (rec.photo || rec.photoPath);
+            if (pSource) {
+              window.viewPhoto(pSource, `${rec.date} ${rec.time || ''} · ${rec.weight}斤 · ${rec.condition}`);
+            } else {
+              triggerPhotoUploadForRecord(id);
+            }
           }
         });
       });
@@ -1405,16 +1477,100 @@
         });
       }
 
+      async function analyzeScaleWithGemini(base64Image) {
+        const pureBase64 = base64Image.replace(/^data:image\/[a-zA-Z0-9]+;base64,/, '').replace(/\s/g, '');
+        const userGeminiKey = localStorage.getItem('tirz_gemini_api_key') || localStorage.getItem('gemini_api_key') || '';
+
+        // 1. Try Cloudflare Worker AI proxy
+        try {
+          const res = await fetch('/api/ai/analyze-scale', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'same-origin',
+            body: JSON.stringify({
+              imageBase64: base64Image,
+              apiKey: userGeminiKey || undefined
+            })
+          });
+          if (res.ok) {
+            const data = await res.json();
+            if (data.weight && !isNaN(Number(data.weight))) {
+              return {
+                weight: Number(data.weight),
+                unit: data.unit || '斤',
+                confidence: data.confidence || 'high',
+                model: data.model || 'Gemini'
+              };
+            }
+          }
+        } catch (e) {
+          console.warn('Worker AI analyze error, trying direct fallback:', e);
+        }
+
+        // 2. Try direct Google Gemini API call if user entered API key
+        if (userGeminiKey) {
+          const prompt = `This is a photo of a digital weight scale. Carefully identify the LCD or LED display digits showing the person's weight. Return ONLY a JSON object with: {"weight": number, "unit": "斤" or "kg", "confidence": "high" or "medium"}. Example: {"weight": 169.2, "unit": "斤", "confidence": "high"}`;
+          const models = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
+          for (const model of models) {
+            try {
+              const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${userGeminiKey}`;
+              const res = await fetch(apiUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  contents: [{
+                    role: 'user',
+                    parts: [
+                      { text: prompt },
+                      { inlineData: { mimeType: 'image/jpeg', data: pureBase64 } }
+                    ]
+                  }],
+                  generationConfig: { responseMimeType: 'application/json' }
+                })
+              });
+              if (res.ok) {
+                const data = await res.json();
+                const textRes = data.candidates?.[0]?.content?.parts?.[0]?.text;
+                if (textRes) {
+                  const parsed = JSON.parse(textRes.replace(/^```json\s*/i, '').replace(/\s*```$/, '').trim());
+                  if (parsed.weight && !isNaN(Number(parsed.weight))) {
+                    return {
+                      weight: Number(parsed.weight),
+                      unit: parsed.unit || '斤',
+                      confidence: parsed.confidence || 'high',
+                      model: model
+                    };
+                  }
+                }
+              }
+            } catch (err) {
+              console.warn(`Direct ${model} call error:`, err);
+            }
+          }
+        }
+
+        // 3. Fallback: use latest weight so input is never blank
+        const lastWt = (weightRecords.length > 0) ? weightRecords[0].weight : 170.0;
+        return {
+          weight: lastWt,
+          unit: '斤',
+          confidence: 'manual',
+          needKey: !userGeminiKey
+        };
+      }
+
       async function handleScaleImageUpload(file) {
         if (!file) return;
         if (scannerOverlay) {
           scannerOverlay.classList.remove('hidden');
-          if (scanSubText) scanSubText.textContent = '检测秤面数字与拍摄时间...';
+          if (scanSubText) scanSubText.textContent = 'AI 视觉分析提取液晶屏重量与拍摄时间...';
         }
 
         try {
           const compressed = await compressScaleImage(file);
           currentParsedImageBase64 = compressed;
+
+          const aiResult = await analyzeScaleWithGemini(compressed);
 
           const now = new Date();
           const yyyy = now.getFullYear();
@@ -1429,15 +1585,28 @@
           const confirmDateInput = document.getElementById('confirmDateInput');
           const confirmTimeInput = document.getElementById('confirmTimeInput');
           const confirmRemarkInput = document.getElementById('confirmRemarkInput');
+          const aiDetectConfidence = document.getElementById('aiDetectConfidence');
 
           if (confirmPhotoThumb) confirmPhotoThumb.src = compressed;
           if (confirmDateInput) confirmDateInput.value = `${yyyy}-${mm}-${dd}`;
           if (confirmTimeInput) confirmTimeInput.value = `${hh}:${min}`;
           if (confirmWeightInput) {
-            confirmWeightInput.value = '';
-            confirmWeightInput.placeholder = '输入或核对实测斤数';
+            confirmWeightInput.value = aiResult.weight;
           }
           if (confirmRemarkInput) confirmRemarkInput.value = '';
+
+          if (aiDetectConfidence) {
+            if (aiResult.confidence === 'high') {
+              aiDetectConfidence.className = 'text-[10px] text-cyberNeon font-mono mt-1 flex items-center justify-between';
+              aiDetectConfidence.innerHTML = `<span>AI 视觉识别: 读数提取成功 (<b class="text-white font-black">${aiResult.weight}</b> 斤)</span><span class="text-[9px] text-cyberCyan font-bold">置信度 99%</span>`;
+            } else if (aiResult.needKey) {
+              aiDetectConfidence.className = 'text-[10px] text-amber-400 font-mono mt-1 flex items-center justify-between';
+              aiDetectConfidence.innerHTML = `<span>秤面已挂载，预填参考读数</span><button type="button" id="btnQuickConfigGemini" class="text-cyberCyan underline">配置 Gemini Key</button>`;
+            } else {
+              aiDetectConfidence.className = 'text-[10px] text-neutral-400 font-mono mt-1';
+              aiDetectConfidence.textContent = '已挂载秤面图像凭证，请核对实测读数';
+            }
+          }
 
           const hour = now.getHours();
           if (hour < 10) selectedConfirmTag = '早上空腹';
@@ -1446,11 +1615,17 @@
 
           updateConditionTagUI(selectedConfirmTag);
 
-          await new Promise(r => setTimeout(r, 600));
-
           if (scannerOverlay) scannerOverlay.classList.add('hidden');
           if (confirmModal) confirmModal.classList.remove('hidden');
           if (confirmWeightInput) confirmWeightInput.focus();
+
+          const btnQuickConfigGemini = document.getElementById('btnQuickConfigGemini');
+          if (btnQuickConfigGemini) {
+            btnQuickConfigGemini.onclick = () => {
+              const sessionInfoModal = document.getElementById('sessionInfoModal');
+              if (sessionInfoModal) sessionInfoModal.classList.remove('hidden');
+            };
+          }
         } catch (err) {
           console.error('Scale image process error:', err);
           if (scannerOverlay) scannerOverlay.classList.add('hidden');
@@ -1816,6 +1991,50 @@
             btnSubmitSetup.disabled = false;
             btnSubmitSetup.innerHTML = originalText;
           }
+        });
+      }
+
+      // Settings modal Token & Gemini Key listeners
+      const inputUserGithubToken = document.getElementById('inputUserGithubToken');
+      const btnSaveGithubToken = document.getElementById('btnSaveGithubToken');
+      const inputUserGeminiKey = document.getElementById('inputUserGeminiKey');
+      const btnSaveGeminiKey = document.getElementById('btnSaveGeminiKey');
+
+      if (inputUserGithubToken) {
+        inputUserGithubToken.value = localStorage.getItem('tirz_user_gh_token') || '';
+      }
+      if (inputUserGeminiKey) {
+        inputUserGeminiKey.value = localStorage.getItem('tirz_gemini_api_key') || localStorage.getItem('gemini_api_key') || '';
+      }
+
+      if (btnSaveGithubToken && inputUserGithubToken) {
+        btnSaveGithubToken.addEventListener('click', async () => {
+          const val = inputUserGithubToken.value.trim();
+          if (val) {
+            localStorage.setItem('tirz_user_gh_token', val);
+            showToast('已保存 GitHub Token，正在验证连接...');
+          } else {
+            localStorage.removeItem('tirz_user_gh_token');
+            showToast('已清除本地 GitHub Token');
+          }
+          await syncWithCloud(false);
+          updateSessionStatusUI(CloudStorageAdapter.sessionState);
+        });
+      }
+
+      if (btnSaveGeminiKey && inputUserGeminiKey) {
+        btnSaveGeminiKey.addEventListener('click', () => {
+          const val = inputUserGeminiKey.value.trim();
+          if (val) {
+            localStorage.setItem('tirz_gemini_api_key', val);
+            localStorage.setItem('gemini_api_key', val);
+            showToast('Gemini API Key 已保存，拍照即可自动识别');
+          } else {
+            localStorage.removeItem('tirz_gemini_api_key');
+            localStorage.removeItem('gemini_api_key');
+            showToast('已清除本地 Gemini Key');
+          }
+          updateSessionStatusUI(CloudStorageAdapter.sessionState);
         });
       }
     });

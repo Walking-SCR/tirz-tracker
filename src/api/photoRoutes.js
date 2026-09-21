@@ -11,13 +11,16 @@ export async function handlePhotoRoutes(request, env, url, session) {
     const photoPath = `images/${yyyy}/${mm}/${filename}`;
 
     try {
-      if (env.GITHUB_TOKEN) {
+      const clientToken = request.headers.get('X-GitHub-Token');
+      if (clientToken && !env.GITHUB_TOKEN) env._clientToken = clientToken;
+
+      if (env.GITHUB_TOKEN || env._clientToken) {
         const result = await fetchPrivatePhoto(env, photoPath);
         if (result) {
           return new Response(result.body, {
             headers: {
               'Content-Type': result.contentType || 'image/webp',
-              'Cache-Control': 'private, no-store, must-revalidate',
+              'Cache-Control': 'public, max-age=86400',
               'X-Content-Type-Options': 'nosniff'
             }
           });

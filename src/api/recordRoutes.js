@@ -4,6 +4,11 @@ export async function handleRecordRoutes(request, env, url, session) {
   const path = url.pathname;
   const method = request.method;
 
+  const clientToken = request.headers.get('X-GitHub-Token');
+  if (clientToken && !env.GITHUB_TOKEN) {
+    env._clientToken = clientToken;
+  }
+
   // 1. GET /api/records
   if (path === '/api/records' && method === 'GET') {
     let records = [];
