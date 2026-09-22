@@ -2045,6 +2045,17 @@
       const viewport = document.getElementById('timelineViewport');
       if (!viewport || viewport.dataset.timelineBound === 'true') return;
       viewport.dataset.timelineBound = 'true';
+      const timelineDebugEnabled = new URLSearchParams(window.location.search).get('debug') === '1';
+      const timelineDebugLog = (phase, details = {}) => {
+        if (!timelineDebugEnabled) return;
+        const entry = {
+          phase,
+          at: new Date().toISOString(),
+          ...details
+        };
+        window.__timelineDebugLog = [...(window.__timelineDebugLog || []), entry].slice(-80);
+        console.info('[timeline-debug]', entry);
+      };
       const hint = document.getElementById('timelineGestureHint');
       const resetButton = document.getElementById('timelineResetToday');
       const getTrack = () => document.getElementById('timelineNodesContainer');
@@ -2070,6 +2081,7 @@
       };
       const cancelDrag = () => {
         if (!timelineDragState) return;
+        timelineDebugLog('cancel', { axis: timelineDragState.axis });
         timelineDragState = null;
         clearVisualDrag();
         setHint('左右滑动 4 天查看更多日期');
@@ -2083,21 +2095,32 @@
           lastX: event.clientX,
           lastY: event.clientY,
           pointerId: event.pointerId,
+          captureEligible: event.type?.startsWith('pointer') === true,
           axis: null,
-          dragging: false
+          dragging: false,
+          moveCount: 0
         };
         timelineSuppressClick = false;
+        timelineDebugLog('start', {
+          type: event.type || 'touch-fallback',
+          pointerType: event.pointerType || 'touch',
+          x: event.clientX,
+          y: event.clientY,
+          pointerId: event.pointerId
+        });
       };
       const moveDrag = (event) => {
         const state = timelineDragState;
         if (!state) return;
         state.lastX = event.clientX;
         state.lastY = event.clientY;
+        state.moveCount += 1;
         const dx = event.clientX - state.startX;
         const dy = event.clientY - state.startY;
         if (!state.axis && Math.max(Math.abs(dx), Math.abs(dy)) >= 8) {
           state.axis = Math.abs(dx) > Math.abs(dy) * 1.15 ? 'horizontal' : 'vertical';
           if (state.axis === 'vertical') {
+            timelineDebugLog('axis-locked-vertical', { dx, dy });
             timelineDragState = null;
             return;
           }
@@ -2105,7 +2128,16 @@
           viewport.classList.add('is-dragging');
           const track = getTrack();
           if (track) track.classList.add('is-dragging');
-          if (state.pointerId !== undefined) viewport.setPointerCapture?.(state.pointerId);
+          if (state.captureEligible && state.pointerId !== undefined) {
+            try {
+              viewport.setPointerCapture?.(state.pointerId);
+            } catch (error) {
+              // iOS 某些版本会在触摸指针已被系统接管后抛 NotFoundError；
+              // 捕获失败不应中断后续 touchmove/touchend 分页逻辑。
+              timelineDebugLog('capture-failed', { name: error?.name, message: error?.message });
+            }
+          }
+          timelineDebugLog('axis-locked-horizontal', { dx, dy, pointerType: event.pointerType || 'touch' });
         }
         if (state.axis !== 'horizontal') return;
         event.preventDefault();
@@ -2137,6 +2169,15 @@
         const direction = deltaX < 0 ? 1 : -1;
         const target = Math.max(0, Math.min(info.maxOffsetDays, timelineWindowOffsetDays + (shouldPage ? direction * TIMELINE_DRAG_STEP_DAYS : 0)));
         const steps = Math.abs(target - timelineWindowOffsetDays);
+        timelineDebugLog('end', {
+          deltaX,
+          shouldPage,
+          direction,
+          fromOffset: timelineWindowOffsetDays,
+          targetOffset: target,
+          maxOffset: info.maxOffsetDays,
+          moves: state.moveCount
+        });
         timelineSuppressClick = state.dragging;
         clearVisualDrag();
         if (timelineAnimationTimer) clearTimeout(timelineAnimationTimer);
