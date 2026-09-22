@@ -171,6 +171,9 @@ test('V6 interaction DOM IDs and structures are present', () => {
   assert.match(html, /onpointerdown/, 'Timeline should support pointer drag start');
   assert.match(html, /onpointermove/, 'Timeline should provide drag feedback');
   assert.match(html, /onpointerup/, 'Timeline should support pointer drag end');
+  assert.match(html, /addEventListener\('touchstart'/, 'Timeline should support touch drag fallback on iPhone WebViews');
+  assert.match(html, /addEventListener\('touchmove'/, 'Timeline should handle horizontal touch movement');
+  assert.match(html, /touch-action: none/, 'Timeline should lock the gesture after horizontal dragging starts');
   assert.match(html, /timelineOffsetInitialized/, 'Timeline should initialize its window around today once');
   assert.match(html, /state\.axis = Math\.abs\(dx\)/, 'Timeline should lock the gesture axis before dragging');
   assert.match(html, /timelineSuppressClick/, 'Timeline drag should not accidentally activate a date node');

@@ -110,6 +110,7 @@
 
     .timeline-viewport.is-dragging {
       cursor: grabbing;
+      touch-action: none;
     }
 
     .timeline-track {
@@ -2156,6 +2157,33 @@
         window.setTimeout(() => { timelineSuppressClick = false; }, 450);
       };
 
+      // 部分 iPhone WebView/Safari 版本不会完整派发 Pointer Events，
+      // 因此保留 Touch Events 回退，保证横向左滑仍能进入分页逻辑。
+      const touchPoint = (event) => event.touches?.[0] || event.changedTouches?.[0];
+      const asPointerLikeEvent = (event) => {
+        const point = touchPoint(event);
+        if (!point) return null;
+        return {
+          clientX: point.clientX,
+          clientY: point.clientY,
+          pointerId: 1,
+          pointerType: 'touch',
+          preventDefault: () => event.preventDefault()
+        };
+      };
+      const startTouch = (event) => {
+        const normalized = asPointerLikeEvent(event);
+        if (normalized) startDrag(normalized);
+      };
+      const moveTouch = (event) => {
+        const normalized = asPointerLikeEvent(event);
+        if (normalized) moveDrag(normalized);
+      };
+      const endTouch = (event) => {
+        const normalized = asPointerLikeEvent(event);
+        if (normalized) endDrag(normalized);
+      };
+
       viewport.onpointerdown = startDrag;
       viewport.onpointermove = moveDrag;
       viewport.onpointerup = endDrag;
@@ -2163,6 +2191,12 @@
       viewport.onlostpointercapture = (event) => {
         if (timelineDragState && timelineDragState.axis === 'horizontal') endDrag(event);
       };
+      if (!('PointerEvent' in window)) {
+        viewport.addEventListener('touchstart', startTouch, { passive: false });
+        viewport.addEventListener('touchmove', moveTouch, { passive: false });
+        viewport.addEventListener('touchend', endTouch, { passive: false });
+        viewport.addEventListener('touchcancel', cancelDrag, { passive: false });
+      }
       if (resetButton) resetButton.onclick = () => {
         const info = getTimelineWindowInfo();
         timelineWindowOffsetDays = info.todayWindowOffset;
