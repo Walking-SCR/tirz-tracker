@@ -2191,12 +2191,12 @@
       viewport.onlostpointercapture = (event) => {
         if (timelineDragState && timelineDragState.axis === 'horizontal') endDrag(event);
       };
-      if (!('PointerEvent' in window)) {
-        viewport.addEventListener('touchstart', startTouch, { passive: false });
-        viewport.addEventListener('touchmove', moveTouch, { passive: false });
-        viewport.addEventListener('touchend', endTouch, { passive: false });
-        viewport.addEventListener('touchcancel', cancelDrag, { passive: false });
-      }
+      // Pointer Events 与 Touch Events 在部分 iOS 版本会同时触发；
+      // 两套事件都监听，由 timelineDragState 防止重复分页，避免设备能力判断误判。
+      viewport.addEventListener('touchstart', startTouch, { passive: false });
+      viewport.addEventListener('touchmove', moveTouch, { passive: false });
+      viewport.addEventListener('touchend', endTouch, { passive: false });
+      viewport.addEventListener('touchcancel', cancelDrag, { passive: false });
       if (resetButton) resetButton.onclick = () => {
         const info = getTimelineWindowInfo();
         timelineWindowOffsetDays = info.todayWindowOffset;
