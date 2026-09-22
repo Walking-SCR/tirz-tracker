@@ -1,6 +1,7 @@
 import {
   getAuthSession,
   getTrustedDevice,
+  getSigningKey,
   signToken,
   buildCookieHeader,
   clearCookieHeader,
@@ -23,7 +24,7 @@ export async function handleAuthRoutes(request, env, url) {
       const cookies = parseCookies(request);
       if (!cookies['tirz_session'] || !cookies['tirz_device']) {
         const nowSeconds = Math.floor(Date.now() / 1000);
-        const signingKey = env.AUTH_SIGNING_KEY || 'tirz-fallback-auth-key-super-secret-signing-32chars';
+        const signingKey = getSigningKey(env);
         const sessionPayload = {
           email: session.email,
           deviceId: session.deviceId || 'dev-healed',
@@ -77,7 +78,7 @@ export async function handleAuthRoutes(request, env, url) {
 
     const inputEmail = (body.email || '').trim().toLowerCase();
     const allowedEmail = (env.ALLOWED_EMAIL || 'walkingscr@gmail.com').trim().toLowerCase();
-    const signingKey = env.AUTH_SIGNING_KEY || 'tirz-fallback-auth-key-super-secret-signing-32chars';
+    const signingKey = getSigningKey(env);
 
     // 校验邮箱是否在白名单内
     if (!inputEmail || inputEmail !== allowedEmail) {
@@ -162,7 +163,7 @@ export async function handleAuthRoutes(request, env, url) {
     const inputSecret = (body.bootstrapSecret || '').trim();
     const expectedSecret = (env.BOOTSTRAP_SECRET || 'tirz2026').trim();
     const allowedEmail = (env.ALLOWED_EMAIL || 'walkingscr@gmail.com').trim().toLowerCase();
-    const signingKey = env.AUTH_SIGNING_KEY || 'tirz-fallback-auth-key-super-secret-signing-32chars';
+    const signingKey = getSigningKey(env);
 
     if (allowedEmail && inputEmail !== allowedEmail) {
       return new Response(JSON.stringify({

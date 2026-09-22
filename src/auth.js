@@ -105,8 +105,14 @@ export function generateDeviceId() {
   return crypto.randomUUID ? crypto.randomUUID() : 'dev-' + Math.random().toString(36).substring(2, 15);
 }
 
-function getSigningKey(env) {
-  return env.AUTH_SIGNING_KEY || 'tirz-fallback-auth-key-super-secret-signing-32chars';
+// 获取 HMAC 签名密钥。未配置时直接抛错，绝不退化为公开的默认值：
+// 默认值一旦生效，攻击者即可用已知常量伪造会话 Cookie 绕过认证。
+export function getSigningKey(env) {
+  const key = (env && env.AUTH_SIGNING_KEY) ? env.AUTH_SIGNING_KEY.trim() : '';
+  if (!key) {
+    throw new Error('AUTH_SIGNING_KEY_NOT_CONFIGURED: 必须在 Worker Secrets 中配置 AUTH_SIGNING_KEY');
+  }
+  return key;
 }
 
 // 从请求中校验用户会话：依次尝试 Authorization 请求头、X-Device-Token 请求头、会话 Cookie，最后回退到 180 天受信设备 Cookie

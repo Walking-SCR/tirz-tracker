@@ -56,6 +56,11 @@
       -webkit-tap-highlight-color: transparent;
     }
 
+    /* 关键状态不依赖 Tailwind CDN：CDN 加载慢或被网络拦截时，隐藏弹层仍必须保持隐藏。 */
+    .hidden {
+      display: none !important;
+    }
+
     body {
       background-color: #06111F;
       color: #F4F7FB;
@@ -67,8 +72,36 @@
     }
 
     .app-header {
-      padding-top: max(12px, calc(env(safe-area-inset-top, 0px) + 6px));
-      padding-bottom: 10px;
+      padding-top: max(18px, calc(env(safe-area-inset-top, 0px) + 14px));
+      padding-bottom: 18px;
+      background: transparent;
+      border-bottom: 0;
+    }
+
+    .home-section-title {
+      font-size: clamp(1.25rem, 5vw, 1.5rem);
+      line-height: 1.2;
+      letter-spacing: 0.02em;
+    }
+
+    .trend-chart-wrap {
+      height: clamp(15rem, 45vw, 18rem);
+    }
+
+    .timeline-viewport {
+      overflow: hidden;
+      touch-action: pan-y;
+      cursor: grab;
+      user-select: none;
+    }
+
+    .timeline-viewport.is-dragging {
+      cursor: grabbing;
+    }
+
+    .timeline-track {
+      transition: transform 180ms ease-out;
+      will-change: transform;
     }
 
     .glass-surface {
@@ -166,8 +199,8 @@
 
     /* 记录卡片固定两行与高度约束 */
     .record-card {
-      min-height: 92px;
-      max-height: 108px;
+      min-height: 116px;
+      max-height: 132px;
     }
 
     .record-remark {
@@ -213,59 +246,59 @@
 <body class="antialiased selection:bg-cyberNeon/30">
 
   <!-- 01 顶栏 Header -->
-  <header id="appHeader" class="sticky top-0 z-40 glass-surface border-b border-[rgba(145,166,190,0.18)] px-4 transition-all app-header">
+  <header id="appHeader" class="px-4 transition-all app-header">
     <div class="max-w-md mx-auto flex items-center justify-between">
       <!-- 左侧：Sparkles 图标与主标题 -->
       <div class="flex items-center space-x-2.5 min-w-0">
-        <div class="w-8 h-8 rounded-xl bg-gradient-to-tr from-cyberNeon/20 to-cyberCyan/15 border border-cyberNeon/40 flex-shrink-0 flex items-center justify-center text-cyberNeon shadow-[0_0_12px_rgba(39,242,195,0.25)]">
-          <i class="ph-bold ph-sparkle text-lg"></i>
+        <div class="w-11 h-11 rounded-2xl bg-gradient-to-tr from-cyberNeon/20 to-cyberCyan/15 border border-cyberNeon/40 flex-shrink-0 flex items-center justify-center text-cyberNeon shadow-[0_0_16px_rgba(39,242,195,0.25)]">
+          <i class="ph-bold ph-sparkle text-2xl"></i>
         </div>
         <div class="min-w-0">
-          <h1 class="text-sm font-black tracking-wider text-white">体重记录</h1>
-          <p class="text-[11px] font-mono text-cyberTextDim whitespace-nowrap truncate">每一次记录，都看得见变化</p>
+          <h1 class="text-2xl font-black tracking-wider text-white leading-none">体重记录</h1>
+          <p class="text-sm font-mono text-cyberTextDim whitespace-nowrap truncate mt-1">每一次记录，都看得见变化</p>
         </div>
       </div>
 
       <!-- 右侧：同步状态按钮与日期 -->
-      <button id="btnHeaderSync" class="flex flex-col items-end py-1 px-2 rounded-xl hover:bg-white/5 active:scale-95 transition" title="点击查看账号与同步状态">
-        <div class="flex items-center gap-1.5 text-xs font-mono font-bold text-cyberNeon" id="headerSyncStatusRow">
-          <i id="headerSyncIcon" class="ph-bold ph-cloud-check text-sm"></i>
+      <button id="btnHeaderSync" aria-label="查看账号与同步状态" class="flex flex-col items-end py-1 px-2 rounded-xl hover:bg-white/5 active:scale-95 transition" title="点击查看账号与同步状态">
+        <div class="flex items-center gap-1.5 text-sm font-mono font-bold text-cyberNeon" id="headerSyncStatusRow">
+          <i id="headerSyncIcon" class="ph-bold ph-cloud-check text-lg"></i>
           <span id="headerSyncText">已同步</span>
         </div>
-        <span id="headerDateText" class="text-[10px] font-mono text-cyberTextDim mt-0.5">9月22日</span>
+        <span id="headerDateText" class="text-sm font-mono text-cyberTextDim mt-1">9月22日</span>
       </button>
     </div>
   </header>
 
   <!-- 主内容区域（严格按 V4/V6 单页信息架构顺序） -->
-  <main class="max-w-md mx-auto px-4 pt-3.5 space-y-4">
+  <main class="max-w-md mx-auto px-4 pt-1 space-y-5">
 
     <!-- 02 关键指标：三列共享指标卡 -->
-    <section id="metricsSummary" class="glass-surface rounded-2xl p-3.5 grid grid-cols-3 divide-x divide-[rgba(145,166,190,0.18)] text-center shadow-[0_4px_20px_rgba(0,0,0,0.35)]">
-      <div class="px-2">
-        <div class="text-[11px] font-mono text-cyberTextDim">目标体重</div>
-        <div class="text-xl font-mono font-black text-white mt-1">
+    <section id="metricsSummary" class="glass-surface rounded-2xl p-4 grid grid-cols-3 divide-x divide-[rgba(145,166,190,0.18)] text-center shadow-[0_4px_20px_rgba(0,0,0,0.35)]">
+      <div class="px-1">
+        <div class="text-sm font-mono text-cyberTextDim">目标体重</div>
+        <div class="text-3xl font-mono font-black text-white mt-1 leading-none">
           <span id="statTargetWeight">148</span><span class="text-xs font-normal text-cyberTextDim ml-0.5">斤</span>
         </div>
       </div>
-      <div class="px-2">
-        <div class="text-[11px] font-mono text-cyberTextDim">当前体重</div>
-        <div class="text-xl font-mono font-black text-cyberNeon mt-1">
+      <div class="px-1">
+        <div class="text-sm font-mono text-cyberTextDim">当前体重</div>
+        <div class="text-3xl font-mono font-black text-cyberNeon mt-1 leading-none">
           <span id="statCurrentWeight">--</span><span class="text-xs font-normal text-cyberTextDim ml-0.5">斤</span>
         </div>
       </div>
-      <div class="px-2">
-        <div class="text-[11px] font-mono text-cyberTextDim">累计净减</div>
-        <div class="text-xl font-mono font-black text-cyberPurple mt-1">
+      <div class="px-1">
+        <div class="text-sm font-mono text-cyberTextDim">累计净减</div>
+        <div class="text-3xl font-mono font-black text-cyberPurple mt-1 leading-none">
           <span id="statTotalDrop">--</span><span class="text-xs font-normal text-cyberTextDim ml-0.5">斤</span>
         </div>
       </div>
     </section>
 
     <!-- 03 体重趋势：范围切换与霓虹走势图 -->
-    <section id="trendSection" class="glass-surface rounded-2xl p-4 space-y-3 shadow-[0_4px_20px_rgba(0,0,0,0.25)]">
+    <section id="trendSection" class="space-y-3">
       <div class="flex items-center justify-between">
-        <h2 class="text-sm font-bold text-white tracking-wide">体重趋势</h2>
+        <h2 class="home-section-title font-bold text-white">体重趋势</h2>
         <!-- 范围切换 Pill：默认累计 -->
         <div class="flex items-center rounded-full bg-black/40 p-0.5 border border-[rgba(145,166,190,0.18)]">
           <button id="trendRangeAll" class="px-3 py-1 rounded-full text-xs font-mono font-bold bg-cyberNeon text-[#06111F] transition">累计</button>
@@ -275,19 +308,19 @@
       </div>
 
       <!-- Canvas 容器 -->
-      <div class="w-full h-52 relative">
+      <div class="w-full trend-chart-wrap relative">
         <canvas id="weightChartCanvas"></canvas>
       </div>
     </section>
 
     <!-- 04 全页唯一高强调主按钮：记录今日体重 + 手动补录次级入口 -->
     <section class="space-y-2">
-      <button id="btnRecordToday" class="w-full h-14 rounded-2xl bg-cyberNeon hover:bg-cyberNeon/90 active:scale-[0.98] transition font-bold text-[#06111F] text-base flex items-center justify-center gap-2 shadow-[0_0_25px_rgba(39,242,195,0.35)] select-none">
-        <i class="ph-bold ph-camera text-xl"></i>
+      <button id="btnRecordToday" class="w-full h-16 rounded-2xl bg-cyberNeon hover:bg-cyberNeon/90 active:scale-[0.98] transition font-bold text-[#06111F] text-lg flex items-center justify-center gap-2 shadow-[0_0_25px_rgba(39,242,195,0.35)] select-none">
+        <i class="ph-bold ph-camera text-2xl"></i>
         <span>记录今日体重</span>
       </button>
       <div class="text-center">
-        <button id="btnManualAdd" class="text-xs font-mono text-cyberPurple hover:text-cyberNeon transition py-1 inline-flex items-center gap-1 select-none">
+        <button id="btnManualAdd" class="text-sm font-mono text-cyberPurple hover:text-cyberNeon transition py-1 inline-flex items-center gap-1 select-none">
           <span>手动补录</span>
           <i class="ph-bold ph-caret-right text-xs"></i>
         </button>
@@ -295,20 +328,20 @@
     </section>
 
     <!-- 05 疗程时间轴：7 天水平视图与给药状态 -->
-    <section id="treatmentTimeline" class="glass-surface rounded-2xl p-4 space-y-3 shadow-[0_4px_20px_rgba(0,0,0,0.25)]">
+    <section id="treatmentTimeline" class="border-y border-[rgba(145,166,190,0.16)] py-5 space-y-4">
       <div class="flex items-center justify-between">
         <div class="flex items-center gap-2 cursor-pointer group" id="btnTimelineSettings" title="查看或编辑疗程周期">
-          <span class="text-sm font-bold text-white tracking-wide group-hover:text-cyberPurple transition">疗程时间轴</span>
-          <i class="ph-bold ph-gear text-xs text-cyberTextDim group-hover:text-cyberPurple transition"></i>
+          <span class="home-section-title font-bold text-white group-hover:text-cyberPurple transition">疗程时间轴</span>
+          <i class="ph-bold ph-gear text-sm text-cyberTextDim group-hover:text-cyberPurple transition"></i>
         </div>
-        <span id="timelineWeekText" class="text-xs font-mono text-cyberTextDim">第 1 周 · 2026年9月</span>
+        <span id="timelineWeekText" class="text-sm font-mono text-cyberTextDim">第 1 周 · 2026年9月</span>
       </div>
 
       <!-- 7 节点水平时间轴容器 -->
-      <div class="relative pt-1 pb-1">
+      <div id="timelineViewport" class="timeline-viewport relative pt-1 pb-1" role="region" aria-label="疗程时间轴，可左右拖动浏览">
         <!-- 背景连接线 -->
-        <div class="absolute top-[22px] left-4 right-4 h-0.5 bg-[rgba(145,166,190,0.18)] -z-0"></div>
-        <div id="timelineNodesContainer" class="relative z-10 flex items-start justify-between">
+        <div class="absolute top-[42px] left-4 right-4 h-0.5 bg-[rgba(145,166,190,0.18)] -z-0"></div>
+        <div id="timelineNodesContainer" class="timeline-track relative z-10 flex items-start justify-between">
           <!-- 由 JS 动态渲染 7 个节点 -->
         </div>
       </div>
@@ -317,8 +350,8 @@
     <!-- 06 记录明细：固定两行记录卡 -->
     <section id="recordsListSection" class="space-y-2.5">
       <div class="flex items-center justify-between px-1">
-        <h2 class="text-sm font-bold text-white tracking-wide">记录明细</h2>
-        <span id="recordCountBadge" class="text-xs font-mono text-cyberTextDim">共 0 条</span>
+        <h2 class="home-section-title font-bold text-white">记录明细</h2>
+        <span id="recordCountBadge" class="text-sm font-mono text-cyberTextDim">共 0 条</span>
       </div>
 
       <!-- 15 空记录状态 -->
@@ -401,7 +434,7 @@
     <div class="app-sheet">
       <div class="flex items-center justify-between px-5 pt-4 pb-3 border-b border-[rgba(145,166,190,0.18)]">
         <h3 id="confirmModalTitle" class="text-sm font-bold text-white font-mono">确认称重数据</h3>
-        <button id="btnCloseModal" class="w-7 h-7 rounded-lg bg-white/5 hover:bg-white/10 text-neutral-400 hover:text-white flex items-center justify-center">
+        <button id="btnCloseModal" aria-label="关闭称重确认" class="w-7 h-7 rounded-lg bg-white/5 hover:bg-white/10 text-neutral-400 hover:text-white flex items-center justify-center">
           <i class="ph-bold ph-x text-sm"></i>
         </button>
       </div>
@@ -421,7 +454,7 @@
               <span id="confirmPhotoStatusText" class="text-[10px] font-mono text-cyberTextDim mt-0.5 block">已载入凭证</span>
             </div>
           </div>
-          <button id="btnChangeImageInConfirm" type="button" class="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-mono text-neutral-300 active:scale-95 transition">
+          <button id="btnChangeImageInConfirm" aria-label="更换称重图片" type="button" class="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-mono text-neutral-300 active:scale-95 transition">
             更换图片
           </button>
         </div>
@@ -960,7 +993,7 @@
       <div id="setupErrorMsg" class="hidden rounded-xl p-2.5 bg-red-500/10 border border-red-500/30 text-[11px] font-mono text-red-400 leading-relaxed"></div>
 
       <div class="pt-2">
-        <button id="btnSubmitSetup" type="button" class="w-full py-3 rounded-xl bg-cyberNeon text-[#06111F] font-mono text-xs font-bold active:scale-95 transition">
+        <button id="btnSubmitSetup" type="button" aria-label="确认绑定当前手机" class="w-full py-3 rounded-xl bg-cyberNeon text-[#06111F] font-mono text-xs font-bold active:scale-95 transition">
           确认绑定当前手机
         </button>
       </div>
@@ -1072,7 +1105,7 @@
             return this.sessionState;
           }
         } catch (e) {
-          this.sessionState = { authenticated: false, email: null, isDeviceBound: false, isLocalDemo: true };
+          this.sessionState = { authenticated: false, email: null, isDeviceBound: false, isLocalDemo: !API_BASE };
           return this.sessionState;
         }
         this.sessionState = { authenticated: false, email: null, isDeviceBound: false, isLocalDemo: false };
@@ -1268,6 +1301,9 @@
 
     let chartInstance = null;
     let trendRange = 'all'; // 'all' | '7d' | '1m'
+    let timelineWindowOffsetDays = 0;
+    let timelineDragState = null;
+    let timelineSuppressClick = false;
 
     // 当前弹层与草稿状态
     let activeWeightModalMode = 'create'; // 'create' | 'edit'
@@ -1531,6 +1567,18 @@
         const userEmail = document.getElementById('sessionUserEmail');
         if (userEmail && status.email) userEmail.textContent = status.email;
 
+        // 首次访问或 /setup 入口必须明确打开对应授权弹层；不再依赖 CDN 的 hidden 样式或服务端重定向。
+        const setupMode = new URLSearchParams(window.location.search).get('mode') === 'setup';
+        const authModal = document.getElementById('authModal');
+        const deviceSetupModal = document.getElementById('deviceSetupModal');
+        if (!status.isDeviceBound && !status.isLocalDemo) {
+          if (setupMode && deviceSetupModal) {
+            deviceSetupModal.classList.remove('hidden');
+          } else if (authModal) {
+            authModal.classList.remove('hidden');
+          }
+        }
+
         await syncWithCloud(true);
       } catch (e) {
         console.warn('Auth / Cloud init error', e);
@@ -1595,6 +1643,15 @@
         if (filtered.length === 0) filtered = sortedAsc.slice(-15);
       }
 
+      // 设计稿按“天”展示趋势。相同日期可能存在多条记录，保留当天最后一次称重，
+      // 避免 x 轴重复、数值标签重叠，并让 7 天/累计两个范围的阅读密度稳定。
+      const dailyLatest = new Map();
+      filtered.forEach(record => {
+        const key = record.date || String(record.timestamp || '');
+        dailyLatest.set(key, record);
+      });
+      filtered = [...dailyLatest.values()].sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+
       const labels = filtered.map(r => {
         if (!r.date) return '';
         const parts = r.date.split('-');
@@ -1619,7 +1676,7 @@
           const { ctx } = chart;
           const meta = chart.getDatasetMeta(0);
           ctx.save();
-          ctx.font = '10px "SF Mono", monospace';
+          ctx.font = '11px "SF Mono", monospace';
           ctx.textAlign = 'center';
           ctx.fillStyle = '#FFFFFF';
 
@@ -1696,12 +1753,19 @@
           scales: {
             x: {
               grid: { color: 'rgba(145, 166, 190, 0.08)' },
-              ticks: { color: '#93A4B8', font: { family: 'monospace', size: 10 } }
+              ticks: {
+                color: '#93A4B8',
+                font: { family: 'monospace', size: 11 },
+                maxRotation: 0,
+                minRotation: 0,
+                autoSkip: true,
+                maxTicksLimit: 11
+              }
             },
             y: {
               min: 145,
               grid: { color: 'rgba(145, 166, 190, 0.08)' },
-              ticks: { color: '#93A4B8', font: { family: 'monospace', size: 10 }, stepSize: 5 }
+              ticks: { color: '#93A4B8', font: { family: 'monospace', size: 11 }, stepSize: 5 }
             }
           }
         }
@@ -1709,140 +1773,171 @@
     }
 
     // =========================================================================
-    // 渲染层 3：疗程时间轴 (7 天水平视图)
+    // 渲染层 3：疗程时间轴（首针起点 + 7 天窗口 + 左右拖动）
     // =========================================================================
+    const TIMELINE_WINDOW_DAYS = 7;
+    const DAY_MS = 24 * 60 * 60 * 1000;
+
+    function timelineDateKey(date) {
+      const d = new Date(date);
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    }
+
+    function timelineDateFromKey(key) {
+      return new Date(`${key}T12:00:00`);
+    }
+
+    function timelineFirstDose() {
+      return [...doseRecords].sort((a, b) => {
+        const aTs = a.timestamp || timelineDateFromKey(a.date || timelineDateKey(new Date())).getTime();
+        const bTs = b.timestamp || timelineDateFromKey(b.date || timelineDateKey(new Date())).getTime();
+        return aTs - bTs;
+      })[0] || null;
+    }
+
+    function timelineDaysBetween(fromKey, toKey) {
+      return Math.round((timelineDateFromKey(toKey).getTime() - timelineDateFromKey(fromKey).getTime()) / DAY_MS);
+    }
+
     function renderTreatmentTimeline() {
       const container = document.getElementById('timelineNodesContainer');
       const weekText = document.getElementById('timelineWeekText');
       if (!container) return;
 
       const now = new Date();
-      const currentYear = now.getFullYear();
-      const currentMonth = now.getMonth() + 1;
+      const todayDateStr = timelineDateKey(now);
+      const firstDose = timelineFirstDose();
+      const firstDoseKey = firstDose ? (firstDose.date || timelineDateKey(firstDose.timestamp || now)) : todayDateStr;
+      const latestDose = [...doseRecords].sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0))[0] || null;
+      const intervalDays = (latestDose && latestDose.intervalDays) ? latestDose.intervalDays : treatmentSchedule.intervalDays;
+      const latestDoseTimestamp = latestDose
+        ? (latestDose.timestamp || timelineDateFromKey(latestDose.date || todayDateStr).getTime())
+        : null;
+      const nextDoseTimestamp = latestDoseTimestamp ? latestDoseTimestamp + intervalDays * DAY_MS : null;
+      const nextDoseDateStr = nextDoseTimestamp ? timelineDateKey(nextDoseTimestamp) : '';
 
-      // 计算当前周起始（以本周一或当前前3天后3天为窗口）
-      const todayDateStr = now.toISOString().slice(0, 10);
-      const dayOfWeek = now.getDay() || 7; // 1-7
-      const monday = new Date(now);
-      monday.setDate(now.getDate() - (dayOfWeek - 1));
+      // 首针是左边界，今天之后再预留一个窗口，方便查看下一次给药。
+      const maxOffsetDays = Math.max(0, timelineDaysBetween(firstDoseKey, todayDateStr) + TIMELINE_WINDOW_DAYS);
+      timelineWindowOffsetDays = Math.min(Math.max(0, timelineWindowOffsetDays), maxOffsetDays);
+      const windowStart = timelineDateFromKey(firstDoseKey);
+      windowStart.setDate(windowStart.getDate() + timelineWindowOffsetDays);
 
+      const weekNumber = Math.floor(timelineWindowOffsetDays / 7) + 1;
       if (weekText) {
-        weekText.textContent = `第 1 周 · ${currentYear}年${currentMonth}月`;
+        weekText.textContent = firstDose
+          ? `第 ${weekNumber} 周 · ${windowStart.getFullYear()}年${windowStart.getMonth() + 1}月`
+          : '尚未开始 · 首针后显示';
       }
 
-      // 获取当前活跃针次与下一次给药时间
-      const sortedDoses = [...doseRecords].sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
-      const latestDose = sortedDoses[0] || null;
-      const intervalDays = (latestDose && latestDose.intervalDays) ? latestDose.intervalDays : treatmentSchedule.intervalDays;
-      const nextDoseTimestamp = latestDose
-        ? latestDose.timestamp + intervalDays * 24 * 60 * 60 * 1000
-        : null;
-      const nextDoseDateStr = nextDoseTimestamp ? new Date(nextDoseTimestamp).toISOString().slice(0, 10) : '';
-
-      // 更新疗程设置弹层预览
       const scheduleCycleDisplay = document.getElementById('scheduleCycleDisplay');
       const scheduleAmountDisplay = document.getElementById('scheduleAmountDisplay');
       const scheduleSiteDisplay = document.getElementById('scheduleSiteDisplay');
       const scheduleNextDateDisplay = document.getElementById('scheduleNextDateDisplay');
-
       if (scheduleCycleDisplay) scheduleCycleDisplay.textContent = `每 ${intervalDays} 天`;
       if (scheduleAmountDisplay) scheduleAmountDisplay.textContent = latestDose ? latestDose.amount : treatmentSchedule.amount;
       if (scheduleSiteDisplay) scheduleSiteDisplay.textContent = latestDose ? latestDose.site : treatmentSchedule.site;
-      if (scheduleNextDateDisplay) {
-        scheduleNextDateDisplay.textContent = nextDoseTimestamp ? formatDateDetailed(nextDoseTimestamp) : '未设定';
-      }
+      if (scheduleNextDateDisplay) scheduleNextDateDisplay.textContent = nextDoseTimestamp ? formatDateDetailed(nextDoseTimestamp) : '未设定';
 
       const weekNames = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
       container.innerHTML = '';
 
-      for (let i = 0; i < 7; i++) {
-        const d = new Date(monday);
-        d.setDate(monday.getDate() + i);
-        const dStr = d.toISOString().slice(0, 10);
-        const m = d.getMonth() + 1;
-        const dayNum = d.getDate();
-        const dayLabel = `${m}/${dayNum}`;
+      for (let i = 0; i < TIMELINE_WINDOW_DAYS; i++) {
+        const d = new Date(windowStart);
+        d.setDate(windowStart.getDate() + i);
+        const dStr = timelineDateKey(d);
+        const dayLabel = `${d.getMonth() + 1}/${d.getDate()}`;
         const wName = weekNames[d.getDay()];
-
         const isToday = dStr === todayDateStr;
-        const isPast = d < new Date(now.getFullYear(), now.getMonth(), now.getDate());
-
-        // 检查该日是否有给药记录
+        const isPast = dStr < todayDateStr;
         const doseOnThisDay = doseRecords.find(dose => dose.date === dStr);
         const isNextDoseDay = dStr === nextDoseDateStr;
-
         const node = document.createElement('div');
-        node.className = 'flex flex-col items-center cursor-pointer select-none group';
+        node.className = 'flex flex-col items-center cursor-pointer select-none group min-w-0';
 
         let circleHtml = '';
         let labelHtml = '';
-
         if (doseOnThisDay) {
-          // 给药日节点：紫色针头图标
-          circleHtml = `
-            <div class="w-8 h-8 rounded-full bg-cyberPurple text-[#0B1A2A] flex items-center justify-center shadow-[0_0_12px_rgba(168,139,255,0.6)] active:scale-95 transition">
-              <i class="ph-fill ph-syringe text-base"></i>
-            </div>
-          `;
-          labelHtml = `
-            <span class="text-[10px] font-mono font-bold text-cyberPurple mt-1">${doseOnThisDay.seq || '给药'}</span>
-            <span class="text-[9px] font-mono text-cyberTextDim">${wName}</span>
-          `;
-          node.onclick = () => openDoseDetail(doseOnThisDay.id);
+          circleHtml = `<div class="w-10 h-10 rounded-full bg-cyberPurple text-[#0B1A2A] flex items-center justify-center shadow-[0_0_12px_rgba(168,139,255,0.6)] active:scale-95 transition"><i class="ph-fill ph-syringe text-lg"></i></div>`;
+          labelHtml = `<span class="text-xs font-mono font-bold text-cyberPurple mt-1 truncate max-w-full">${doseOnThisDay.seq || '给药'}</span><span class="text-[11px] font-mono text-cyberTextDim">${wName}</span>`;
+          node.onclick = () => { if (timelineSuppressClick) { timelineSuppressClick = false; return; } openDoseDetail(doseOnThisDay.id); };
         } else if (isToday) {
-          // 今天节点：薄荷绿光圈
-          circleHtml = `
-            <div class="w-8 h-8 rounded-full bg-[#0B1A2A] border-2 border-cyberNeon flex items-center justify-center shadow-[0_0_12px_rgba(39,242,195,0.6)] active:scale-95 transition">
-              <div class="w-2.5 h-2.5 rounded-full bg-cyberNeon"></div>
-            </div>
-          `;
-          labelHtml = `
-            <span class="text-[10px] font-mono font-bold px-1.5 py-0.2 rounded-full bg-cyberNeon text-[#06111F] mt-1">今天</span>
-            <span class="text-[9px] font-mono text-cyberTextDim mt-0.5">${wName}</span>
-          `;
-          node.onclick = () => openDoseModal();
+          circleHtml = `<div class="w-10 h-10 rounded-full bg-[#0B1A2A] border-2 border-cyberNeon flex items-center justify-center shadow-[0_0_12px_rgba(39,242,195,0.6)] active:scale-95 transition"><div class="w-3 h-3 rounded-full bg-cyberNeon"></div></div>`;
+          labelHtml = `<span class="text-xs font-mono font-bold px-2 py-0.5 rounded-full bg-cyberNeon text-[#06111F] mt-1">今天</span><span class="text-[11px] font-mono text-cyberTextDim mt-0.5">${wName}</span>`;
+          node.onclick = () => { if (timelineSuppressClick) { timelineSuppressClick = false; return; } openDoseModal(); };
         } else if (isNextDoseDay) {
-          // 下次给药日：虚线紫色边框
-          circleHtml = `
-            <div class="w-8 h-8 rounded-full bg-[#0B1A2A] border-2 border-dashed border-cyberPurple text-cyberPurple flex items-center justify-center active:scale-95 transition">
-              <i class="ph-bold ph-syringe text-sm"></i>
-            </div>
-          `;
-          labelHtml = `
-            <span class="text-[10px] font-mono font-bold text-cyberPurple mt-1">下次给药</span>
-            <span class="text-[9px] font-mono text-cyberTextDim">${wName}</span>
-          `;
-          node.onclick = () => openDoseModal();
+          circleHtml = `<div class="w-10 h-10 rounded-full bg-[#0B1A2A] border-2 border-dashed border-cyberPurple text-cyberPurple flex items-center justify-center active:scale-95 transition"><i class="ph-bold ph-syringe text-base"></i></div>`;
+          labelHtml = `<span class="text-xs font-mono font-bold text-cyberPurple mt-1">下次给药</span><span class="text-[11px] font-mono text-cyberTextDim">${wName}</span>`;
+          node.onclick = () => { if (timelineSuppressClick) { timelineSuppressClick = false; return; } openDoseModal(); };
         } else if (isPast) {
-          // 过去已完成日期：勾选图标
-          circleHtml = `
-            <div class="w-7 h-7 rounded-full bg-white/5 border border-[rgba(145,166,190,0.2)] text-cyberTextDim flex items-center justify-center">
-              <i class="ph-bold ph-check text-xs text-cyberNeon/70"></i>
-            </div>
-          `;
-          labelHtml = `
-            <span class="text-[10px] font-mono text-cyberTextDim mt-1">${wName}</span>
-          `;
-          node.onclick = () => openDoseModal();
+          circleHtml = `<div class="w-9 h-9 rounded-full bg-white/5 border border-[rgba(145,166,190,0.2)] text-cyberTextDim flex items-center justify-center"><i class="ph-bold ph-check text-sm text-cyberNeon/70"></i></div>`;
+          labelHtml = `<span class="text-[11px] font-mono text-cyberTextDim mt-1">${wName}</span>`;
+          node.onclick = () => { if (timelineSuppressClick) { timelineSuppressClick = false; return; } openDoseModal(); };
         } else {
-          // 未来日期：空心圆
-          circleHtml = `
-            <div class="w-7 h-7 rounded-full bg-black/40 border border-[rgba(145,166,190,0.18)] flex items-center justify-center"></div>
-          `;
-          labelHtml = `
-            <span class="text-[10px] font-mono text-cyberTextDim mt-1">${wName}</span>
-          `;
-          node.onclick = () => openDoseModal();
+          circleHtml = `<div class="w-9 h-9 rounded-full bg-black/40 border border-[rgba(145,166,190,0.18)] flex items-center justify-center"></div>`;
+          labelHtml = `<span class="text-[11px] font-mono text-cyberTextDim mt-1">${wName}</span>`;
+          node.onclick = () => { if (timelineSuppressClick) { timelineSuppressClick = false; return; } openDoseModal(); };
         }
 
-        node.innerHTML = `
-          <span class="text-[10px] font-mono text-cyberTextDim mb-1">${dayLabel}</span>
-          ${circleHtml}
-          ${labelHtml}
-        `;
-
+        node.innerHTML = `<span class="text-xs font-mono text-cyberTextDim mb-1">${dayLabel}</span>${circleHtml}${labelHtml}`;
         container.appendChild(node);
       }
+
+      bindTimelineDrag();
+    }
+
+    function bindTimelineDrag() {
+      const viewport = document.getElementById('timelineViewport');
+      if (!viewport) return;
+      const startDrag = (event) => {
+        if (timelineDragState) return;
+        timelineDragState = { startX: event.clientX, pointerId: event.pointerId };
+        timelineSuppressClick = false;
+        viewport.classList.add('is-dragging');
+        if (event.pointerId !== undefined) viewport.setPointerCapture?.(event.pointerId);
+      };
+      const moveDrag = (event) => {
+        if (!timelineDragState) return;
+        const container = document.getElementById('timelineNodesContainer');
+        if (container) {
+          container.style.transition = 'none';
+          container.style.transform = `translateX(${event.clientX - timelineDragState.startX}px)`;
+        }
+      };
+      const endDrag = (event) => {
+        if (!timelineDragState) return;
+        const deltaX = event.clientX - timelineDragState.startX;
+        const direction = Math.abs(deltaX) >= 36 ? (deltaX < 0 ? 1 : -1) : 0;
+        timelineSuppressClick = direction !== 0;
+        timelineDragState = null;
+        viewport.classList.remove('is-dragging');
+        const container = document.getElementById('timelineNodesContainer');
+        if (container) {
+          container.style.transition = '';
+          container.style.transform = '';
+        }
+        if (direction) {
+          timelineWindowOffsetDays += direction;
+          renderTreatmentTimeline();
+        }
+      };
+      const cancelDrag = () => {
+        timelineDragState = null;
+        viewport.classList.remove('is-dragging');
+        const container = document.getElementById('timelineNodesContainer');
+        if (container) {
+          container.style.transition = '';
+          container.style.transform = '';
+        }
+      };
+      // Pointer Events 是 iPhone 主路径，鼠标事件作为桌面浏览器与旧 WebView 回退。
+      viewport.onpointerdown = startDrag;
+      viewport.onpointermove = moveDrag;
+      viewport.onpointerup = endDrag;
+      viewport.onpointercancel = cancelDrag;
+      viewport.onmousedown = startDrag;
+      viewport.onmousemove = moveDrag;
+      viewport.onmouseup = endDrag;
+      viewport.onmouseleave = cancelDrag;
     }
 
     function formatDateDetailed(ts) {
@@ -1909,7 +2004,7 @@
 
         card.innerHTML = `
           <!-- 左侧照片跨两行 -->
-          <div class="relative w-16 h-16 rounded-xl overflow-hidden bg-black/80 border border-cyberNeon/30 flex-shrink-0 cursor-pointer group/thumb hover:scale-105 transition" data-view-img="${item.id}">
+            <div class="relative w-20 h-20 rounded-2xl overflow-hidden bg-black/80 border border-cyberNeon/30 flex-shrink-0 cursor-pointer group/thumb hover:scale-105 transition" data-view-img="${item.id}">
             ${photoUrl ? `
               <img src="${photoUrl}" onerror="this.classList.add('opacity-30');" class="w-full h-full object-cover">
               <div class="absolute inset-0 bg-black/30 flex items-center justify-center opacity-0 group-hover/thumb:opacity-100 transition">
@@ -1928,7 +2023,7 @@
             <!-- 第一行：体重、单位、差值 -->
             <div class="flex items-center justify-between">
               <div class="flex items-baseline gap-1.5">
-                <span class="text-2xl font-black font-mono tracking-tight text-white">${item.weight}</span>
+                <span class="text-3xl font-black font-mono tracking-tight text-white leading-none">${item.weight}</span>
                 <span class="text-xs font-mono font-bold text-cyberTextDim">斤</span>
                 <div class="ml-1">${diffBadge}</div>
               </div>
@@ -1945,7 +2040,7 @@
           </div>
 
           <!-- 删除按钮 -->
-          <button type="button" data-del-record="${item.id}" class="w-8 h-8 rounded-lg bg-white/5 hover:bg-red-500/20 text-neutral-500 hover:text-red-400 flex items-center justify-center flex-shrink-0 transition" title="删除记录">
+          <button type="button" aria-label="删除体重记录" data-del-record="${item.id}" class="w-8 h-8 rounded-lg bg-white/5 hover:bg-red-500/20 text-neutral-500 hover:text-red-400 flex items-center justify-center flex-shrink-0 transition" title="删除记录">
             <i class="ph-bold ph-trash text-sm"></i>
           </button>
         `;
@@ -3216,6 +3311,7 @@
           }
           if (setupErrorMsg) setupErrorMsg.classList.add('hidden');
           btnSubmitSetup.disabled = true;
+          btnSubmitSetup.innerHTML = '<i class="ph-bold ph-spinner animate-spin"></i> 正在绑定...';
 
           try {
             await CloudStorageAdapter.bootstrap(email, secret);
@@ -3231,6 +3327,7 @@
             showToast(err.message || '绑定失败', 'error');
           } finally {
             btnSubmitSetup.disabled = false;
+            btnSubmitSetup.innerHTML = '确认绑定当前手机';
           }
         };
       }

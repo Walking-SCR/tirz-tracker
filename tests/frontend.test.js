@@ -37,6 +37,7 @@ test('V6 interaction DOM IDs and structures are present', () => {
     'btnRecordToday',
     'btnManualAdd',
     'treatmentTimeline',
+    'timelineViewport',
     'timelineNodesContainer',
     'timelineWeekText',
     'btnTimelineSettings',
@@ -162,6 +163,15 @@ test('V6 interaction DOM IDs and structures are present', () => {
   for (const id of requiredIds) {
     assert.ok(html.includes(`id="${id}"`), `Expected id="${id}" to be present in index.html`);
   }
+
+  assert.match(html, /timelineWindowOffsetDays/, 'Timeline should keep a draggable window offset');
+  assert.match(html, /onpointerdown/, 'Timeline should support pointer drag start');
+  assert.match(html, /onpointermove/, 'Timeline should provide drag feedback');
+  assert.match(html, /onpointerup/, 'Timeline should support pointer drag end');
+  assert.match(html, /timelineFirstDose/, 'Timeline should anchor to the first dose');
+  assert.match(html, /\.hidden\s*\{\s*display:\s*none\s*!important;/, 'Critical hidden fallback CSS must not depend on Tailwind CDN');
+  assert.match(html, /new URLSearchParams\(window\.location\.search\)/, 'Setup mode query should open the first-device flow');
+  assert.match(html, /正在绑定/, 'Bootstrap action should show a visible pending state');
 });
 
 test('Service Worker cache version is v6.0 in sw.js and public/sw.js', () => {
