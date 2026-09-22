@@ -14,7 +14,7 @@ export async function handleAuthRoutes(request, env, url) {
   const method = request.method;
 
   // 1. GET /api/auth/status：查询当前认证状态
-  if (path === '/api/auth/status' && method === 'GET') {
+  if (path === '/api/auth/status' && (method === 'GET' || method === 'HEAD')) {
     const session = await getAuthSession(request, env);
     const device = await getTrustedDevice(request, env);
     const headers = new Headers({ 'Content-Type': 'application/json' });

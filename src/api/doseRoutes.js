@@ -5,7 +5,7 @@ export async function handleDoseRoutes(request, env, url, session) {
   const method = request.method;
 
   // 1. GET /api/doses：读取全部针剂记录
-  if (path === '/api/doses' && method === 'GET') {
+  if (path === '/api/doses' && (method === 'GET' || method === 'HEAD')) {
     if (!env.GITHUB_TOKEN) {
       return new Response(JSON.stringify({
         error: 'STORAGE_NOT_CONFIGURED',
