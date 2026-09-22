@@ -1927,9 +1927,11 @@
             const rawMsg = (err && err.message) || '未能自动提取读数，请手动输入';
             let displayMsg = rawMsg;
             if (err && err.code === 'AI_AUTH_FAILED') {
-              displayMsg = 'Gemini API Key 无效或已过期，请联系管理员';
+              displayMsg = rawMsg || 'AI 服务认证失败，请联系管理员';
             } else if (err && err.code === 'AI_RATE_LIMITED') {
-              displayMsg = 'Gemini 服务请求频繁或额度已用尽，请稍后重试';
+              displayMsg = rawMsg || 'AI 服务请求频繁或额度已用尽，请稍后重试';
+            } else if (err && err.code === 'AI_REGION_BLOCKED') {
+              displayMsg = '识别服务在当前网络区域不可用，请更换网络（如切换 Wi-Fi/蜂窝数据）后重试';
             } else if (err && err.code === 'AI_BAD_REQUEST') {
               displayMsg = '图片格式或内容无法处理，请重新拍摄';
             } else if (err && (err.code === 'UNSUPPORTED_IMAGE_TYPE' || err.code === 'INVALID_IMAGE')) {
@@ -2412,14 +2414,14 @@
       if ('caches' in window) {
         caches.keys().then(names => {
           for (let name of names) {
-            if (name !== 'tirz-tracker-v5.1') {
+            if (name !== 'tirz-tracker-v5.2') {
               caches.delete(name);
             }
           }
         });
       }
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/sw.js?v=5.1', { updateViaCache: 'none' })
+        navigator.serviceWorker.register('/sw.js?v=5.2', { updateViaCache: 'none' })
           .then((registration) => {
             registration.update();
             registration.onupdatefound = () => {
