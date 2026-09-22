@@ -22,17 +22,17 @@ jobs:
 
       - name: Validate Cloudflare credentials
         env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.TIRZ_TRACKER_BUILD_TOKEN }}
         run: |
           if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
-            echo "::error::Missing repository secret CLOUDFLARE_API_TOKEN. Create a Cloudflare API Token with Workers Scripts Edit permission and save it as a repository secret."
+            echo "::error::Missing repository secret CLOUDFLARE_API_TOKEN or TIRZ_TRACKER_BUILD_TOKEN. Create a Cloudflare API Token with Workers Scripts Edit permission and save it as a repository secret."
             exit 1
           fi
 
       - name: Deploy to Cloudflare Workers
         uses: cloudflare/wrangler-action@v4
         with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.TIRZ_TRACKER_BUILD_TOKEN }}
           # Keep this aligned with package-lock.json. Wrangler >= 3.91 is
           # required because the project uses wrangler.jsonc.
           wranglerVersion: "3.114.17"
