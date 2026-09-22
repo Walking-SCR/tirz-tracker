@@ -53,7 +53,7 @@ export default {
     const url = new URL(request.url);
     const path = url.pathname;
 
-    // Handle CORS preflight
+    // 处理 CORS 预检请求
     if (request.method === 'OPTIONS') {
       const origin = request.headers.get('Origin');
       const corsHeaders = {
@@ -69,7 +69,7 @@ export default {
       });
     }
 
-    // Check all possible token environment variables
+    // 检查所有可能的 Token 环境变量
     const serverToken = (
       (env.GITHUB_TOKEN && env.GITHUB_TOKEN.trim()) ||
       (env.GITHUB_PAT && env.GITHUB_PAT.trim()) ||
@@ -83,7 +83,7 @@ export default {
     const effectiveToken = serverToken || (clientToken ? clientToken.trim() : '');
     const reqEnv = { ...env, GITHUB_TOKEN: effectiveToken };
 
-    // 1. CSRF Protection for state-modifying API requests
+    // 1. 对会改变状态的 API 请求做 CSRF 防护
     if (['POST', 'PATCH', 'DELETE'].includes(request.method) && path.startsWith('/api/')) {
       const origin = request.headers.get('Origin');
       if (origin && origin !== 'null' && !origin.startsWith('file://')) {
@@ -96,18 +96,18 @@ export default {
             });
           }
         } catch (e) {
-          // Invalid URL in origin header, ignore
+          // Origin 请求头中的 URL 不合法，忽略
         }
       }
     }
 
-    // 2. Auth Routes (/api/auth/*)
+    // 2. 认证路由（/api/auth/*）
     if (path.startsWith('/api/auth/')) {
       const authRes = await handleAuthRoutes(request, reqEnv, url);
       if (authRes) return addSecurityHeaders(authRes, request);
     }
 
-    // 3. API Routes (/api/records, /api/doses, /api/photos, /api/ai)
+    // 3. 业务 API 路由（/api/records、/api/doses、/api/photos、/api/ai）
     if (path.startsWith('/api/')) {
       const session = await getAuthSession(request, reqEnv);
 
@@ -116,7 +116,7 @@ export default {
         if (aiRes) return addSecurityHeaders(aiRes, request);
       }
 
-      // Mutating requests strictly require authentication
+      // 写操作严格要求登录认证
       const isMutation = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(request.method);
       if (isMutation && !session) {
         return addSecurityHeaders(new Response(JSON.stringify({
@@ -149,7 +149,7 @@ export default {
       }), request);
     }
 
-    // 4. Special alias: /setup opens the app with setup flag
+    // 4. 特殊别名：/setup 以初始化模式打开应用
     if (path === '/setup') {
       const session = await getAuthSession(request, reqEnv);
       const device = await getTrustedDevice(request, reqEnv);
@@ -168,7 +168,7 @@ export default {
       return Response.redirect(`${url.origin}/?mode=setup`, 302);
     }
 
-    // 5. Root & Static Assets fallback
+    // 5. 根路径与静态资源兜底
     if (path === '/' || path === '/index.html') {
       if (url.searchParams.get('mode') === 'setup') {
         const session = await getAuthSession(request, reqEnv);
@@ -196,7 +196,7 @@ export default {
       } catch (e) {}
     }
 
-    // For any remaining HTML navigation, return SPA fallback
+    // 其余 HTML 页面导航请求统一返回 SPA 兜底页
     const accept = request.headers.get('Accept') || '';
     if (accept.includes('text/html')) {
       return addSecurityHeaders(new Response(getFallbackHtml(), {

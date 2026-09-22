@@ -12,13 +12,13 @@ export async function handleAuthRoutes(request, env, url) {
   const path = url.pathname;
   const method = request.method;
 
-  // 1. GET /api/auth/status
+  // 1. GET /api/auth/status：查询当前认证状态
   if (path === '/api/auth/status' && method === 'GET') {
     const session = await getAuthSession(request, env);
     const device = await getTrustedDevice(request, env);
     const headers = new Headers({ 'Content-Type': 'application/json' });
 
-    // If authenticated via header and cookies are missing, auto-heal cookies
+    // 若通过请求头认证成功但缺少 Cookie，则自动补齐 Cookie
     if (session) {
       const cookies = parseCookies(request);
       if (!cookies['tirz_session'] || !cookies['tirz_device']) {
@@ -63,7 +63,7 @@ export async function handleAuthRoutes(request, env, url) {
     }), { headers });
   }
 
-  // 2. POST /api/auth/login
+  // 2. POST /api/auth/login：邮箱校验并登录
   if (path === '/api/auth/login' && method === 'POST') {
     let body;
     try {
@@ -79,7 +79,7 @@ export async function handleAuthRoutes(request, env, url) {
     const allowedEmail = (env.ALLOWED_EMAIL || 'walkingscr@gmail.com').trim().toLowerCase();
     const signingKey = env.AUTH_SIGNING_KEY || 'tirz-fallback-auth-key-super-secret-signing-32chars';
 
-    // Check email
+    // 校验邮箱是否在白名单内
     if (!inputEmail || inputEmail !== allowedEmail) {
       return new Response(JSON.stringify({
         error: 'EMAIL_NOT_ALLOWED',
@@ -90,31 +90,31 @@ export async function handleAuthRoutes(request, env, url) {
       });
     }
 
-    // Check Trusted Device
+    // 校验受信设备
     let device = await getTrustedDevice(request, env);
     const nowSeconds = Math.floor(Date.now() / 1000);
     const headers = new Headers({ 'Content-Type': 'application/json' });
     const deviceId = (device && device.deviceId) || generateDeviceId();
 
-    // Issue/renew 180-day Device Token
+    // 签发或续期 180 天设备令牌
     const devicePayload = {
       email: inputEmail,
       deviceId: deviceId,
       type: 'device',
       iat: nowSeconds,
-      exp: nowSeconds + 180 * 24 * 60 * 60 // 180 days
+      exp: nowSeconds + 180 * 24 * 60 * 60 // 180 天
     };
     const deviceToken = await signToken(devicePayload, signingKey);
     headers.append('Set-Cookie', buildCookieHeader('tirz_device', deviceToken, 180 * 24 * 60 * 60));
     device = { deviceId: deviceId };
 
-    // Issue Session Cookie (30 days)
+    // 签发会话 Cookie（30 天）
     const sessionPayload = {
       email: inputEmail,
       deviceId: device.deviceId,
       type: 'session',
       iat: nowSeconds,
-      exp: nowSeconds + 30 * 24 * 60 * 60 // 30 days
+      exp: nowSeconds + 30 * 24 * 60 * 60 // 30 天
     };
     const sessionToken = await signToken(sessionPayload, signingKey);
     headers.append('Set-Cookie', buildCookieHeader('tirz_session', sessionToken, 30 * 24 * 60 * 60));
@@ -129,14 +129,14 @@ export async function handleAuthRoutes(request, env, url) {
     }), { headers });
   }
 
-  // 3. POST /api/auth/logout
+  // 3. POST /api/auth/logout：清除会话 Cookie 登出
   if (path === '/api/auth/logout' && method === 'POST') {
     const headers = new Headers({ 'Content-Type': 'application/json' });
     headers.append('Set-Cookie', clearCookieHeader('tirz_session'));
     return new Response(JSON.stringify({ success: true, message: '已安全登出' }), { headers });
   }
 
-  // 4. POST /api/auth/bootstrap
+  // 4. POST /api/auth/bootstrap：使用初始化口令完成设备绑定
   if (path === '/api/auth/bootstrap' && method === 'POST') {
     if (env.BOOTSTRAP_ENABLED === 'false') {
       return new Response(JSON.stringify({
@@ -188,7 +188,7 @@ export async function handleAuthRoutes(request, env, url) {
     const nowSeconds = Math.floor(Date.now() / 1000);
     const newDeviceId = generateDeviceId();
 
-    // 1. Issue Device Cookie (180 days)
+    // 1. 签发设备 Cookie（180 天）
     const devicePayload = {
       email: inputEmail,
       deviceId: newDeviceId,
@@ -198,7 +198,7 @@ export async function handleAuthRoutes(request, env, url) {
     };
     const deviceToken = await signToken(devicePayload, signingKey);
 
-    // 2. Issue Session Cookie (30 days)
+    // 2. 签发会话 Cookie（30 天）
     const sessionPayload = {
       email: inputEmail,
       deviceId: newDeviceId,

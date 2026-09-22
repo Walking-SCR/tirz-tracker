@@ -4,7 +4,7 @@ export async function handlePhotoRoutes(request, env, url, session) {
   const path = url.pathname;
   const method = request.method;
 
-  // Match /api/photos/2026/09/wt-xxxx.webp or /api/photos/images/2026/09/wt-xxxx.webp
+  // 匹配 /api/photos/2026/09/wt-xxxx.webp 或 /api/photos/images/2026/09/wt-xxxx.webp
   const photoMatch = path.match(/^\/api\/photos\/(?:images\/)?(\d{4})\/(\d{2})\/([a-zA-Z0-9_.-]+)$/);
   if (photoMatch && (method === 'GET' || method === 'HEAD')) {
     const [, yyyy, mm, filename] = photoMatch;

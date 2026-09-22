@@ -1,19 +1,16 @@
-// AI Scale Vision Analysis Route.
-// Primary: MiniMax-M3 (OpenAI-compatible multimodal, no regional blocking).
-// Fallback: Gemini via Vertex AI then the public Gemini endpoint (HEIC
-// passthrough and MiniMax outage coverage).
-// The browser never supplies an API key: secrets live in Worker Secrets.
+// AI 秤面识别路由。
+// 主通道：MiniMax-M3（OpenAI 兼容多模态接口，不受调用方地区封锁限制）。
+// 回退通道：先 Vertex AI 再公网 Gemini 端点（覆盖 HEIC 直传与 MiniMax 故障场景）。
+// 浏览器端永不携带 API Key：密钥仅保存在 Worker Secrets 中。
 
 const MAX_IMAGE_BASE64_LENGTH = 4_000_000;
 const UPSTREAM_TIMEOUT_MS = 8_000;
-// Hard ceiling for the whole upstream retry chain so the Worker always
-// answers before the frontend's 20s abort.
+// 整条上游重试链路的硬性时间上限，确保 Worker 总能在前端 20 秒中断之前返回
 const TOTAL_UPSTREAM_BUDGET_MS = 12_000;
-// MiniMax China platform (OpenAI-compatible Chat Completions).
+// MiniMax 国内平台（OpenAI 兼容的 Chat Completions 接口）
 const MINIMAX_API_URL = 'https://api.minimaxi.com/v1/chat/completions';
 const MINIMAX_MODEL = 'MiniMax-M3';
-// MiniMax vision only accepts JPEG/PNG/GIF/WEBP; HEIC/HEIF passthrough goes
-// straight to the Gemini fallback chain.
+// MiniMax 视觉接口仅支持 JPEG/PNG/GIF/WEBP；HEIC/HEIF 直接走 Gemini 回退链路
 const MINIMAX_SUPPORTED_MIME = /^image\/(?:jpeg|png|gif|webp)$/;
 const GEMINI_ENDPOINTS = [
   { name: 'vertex', baseUrl: 'https://aiplatform.googleapis.com/v1/publishers/google/models' },
@@ -118,7 +115,7 @@ export async function handleAIRoutes(request, env, url, session) {
   let timeoutCount = 0;
   let attemptCount = 0;
 
-  // --- Primary: MiniMax-M3 (skip for HEIC/HEIF which it cannot decode) ---
+  // --- 主通道：MiniMax-M3（HEIC/HEIF 无法解码，直接跳过）---
   if (minimaxKey && MINIMAX_SUPPORTED_MIME.test(mimeType)) {
     attemptCount += 1;
     const controller = new AbortController();
@@ -178,7 +175,7 @@ export async function handleAIRoutes(request, env, url, session) {
     }
   }
 
-  // --- Fallback chain: Gemini via Vertex AI, then the public endpoint ---
+  // --- 回退链路：先经 Vertex AI，再走公网端点 ---
   const modelsToTry = ['gemini-flash-lite-latest', 'gemini-3.1-flash-lite'];
 
   attemptLoop:
@@ -244,15 +241,13 @@ export async function handleAIRoutes(request, env, url, session) {
   }
 
   const timedOut = attemptCount > 0 && timeoutCount === attemptCount;
-  // "User location is not supported for the API use." — the upstream rejects
-  // the Worker's egress region, not the image. Report it honestly instead of
-  // mislabeling it as an image-format problem.
+  // "User location is not supported for the API use." —— 上游拒绝的是 Worker 的出口
+  // 所在区域，而非图片本身。此处如实上报，不再误判为图片格式问题。
   const geoBlocked = upstreamReasons.some((reason) => /location is not supported/i.test(reason));
   const authFailed = upstreamStatuses.some(status => status === 401 || status === 403);
   const rateLimited = upstreamStatuses.includes(429);
-  // A single 400 alongside a timeout/network error is not enough evidence that
-  // the image is invalid; otherwise a transient fallback failure is misreported
-  // to the user as an image-format problem.
+  // 仅有 400 且同时伴随超时/网络错误时，不足以判定图片无效；否则一次偶发的回退
+  // 失败会被误报成图片格式问题给到用户。
   const badRequest = upstreamStatuses.length > 0 && upstreamStatuses.every(status => status === 400) && timeoutCount === 0 && !geoBlocked;
   const error = geoBlocked
     ? 'AI_REGION_BLOCKED'

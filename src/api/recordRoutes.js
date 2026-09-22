@@ -4,7 +4,7 @@ export async function handleRecordRoutes(request, env, url, session) {
   const path = url.pathname;
   const method = request.method;
 
-  // 1. GET /api/records
+  // 1. GET /api/records：读取全部体重记录
   if (path === '/api/records' && method === 'GET') {
     if (!env.GITHUB_TOKEN) {
       return new Response(JSON.stringify({
@@ -42,7 +42,7 @@ export async function handleRecordRoutes(request, env, url, session) {
     });
   }
 
-  // 2. POST /api/records (Create new record with optional photo)
+  // 2. POST /api/records：新增记录（可选附带照片）
   if (path === '/api/records' && method === 'POST') {
     let body;
     try {
@@ -65,7 +65,7 @@ export async function handleRecordRoutes(request, env, url, session) {
     let photoPath = '';
     let uploadedSha = null;
 
-    // Strictly require GITHUB_TOKEN for writes
+    // 写操作严格要求配置 GITHUB_TOKEN
     if (!env.GITHUB_TOKEN) {
       return new Response(JSON.stringify({
         error: 'STORAGE_NOT_CONFIGURED',
@@ -73,7 +73,7 @@ export async function handleRecordRoutes(request, env, url, session) {
       }), { status: 503, headers: { 'Content-Type': 'application/json' } });
     }
 
-    // Upload photo if base64 provided
+    // 若提供了 base64 图片则上传照片
     if (photoBase64 && typeof photoBase64 === 'string' && photoBase64.startsWith('data:image')) {
       try {
         const filename = `${recordId}.jpg`;
@@ -115,7 +115,7 @@ export async function handleRecordRoutes(request, env, url, session) {
       });
     } catch (saveErr) {
       console.error('Record save failed, triggering rollback:', saveErr);
-      // Best-effort rollback: delete orphaned photo if created
+      // 尽力回滚：若照片已上传，则删除这张孤立照片
       if (photoPath && uploadedSha) {
         try {
           await deleteFile(env, photoPath, uploadedSha, `Rollback orphaned photo ${photoPath}`);
@@ -130,7 +130,7 @@ export async function handleRecordRoutes(request, env, url, session) {
     }
   }
 
-  // 3. PATCH /api/records/:id (Update or replace photo)
+  // 3. PATCH /api/records/:id：更新记录或替换照片
   const patchMatch = path.match(/^\/api\/records\/([a-zA-Z0-9_-]+)$/);
   const patchTargetId = patchMatch ? patchMatch[1] : (path === '/api/records' ? url.searchParams.get('id') : null);
   if (patchTargetId && method === 'PATCH') {
@@ -157,7 +157,7 @@ export async function handleRecordRoutes(request, env, url, session) {
 
     const current = records[index];
 
-    // If replacement photo base64 provided
+    // 若提供了替换用的 base64 图片
     if (body.photoBase64 && typeof body.photoBase64 === 'string' && body.photoBase64.startsWith('data:image')) {
       const yyyy = String(new Date(current.timestamp).getFullYear());
       const mm = String(new Date(current.timestamp).getMonth() + 1).padStart(2, '0');
@@ -181,7 +181,7 @@ export async function handleRecordRoutes(request, env, url, session) {
     });
   }
 
-  // 4. DELETE /api/records/:id
+  // 4. DELETE /api/records/:id：删除指定记录
   const delMatch = path.match(/^\/api\/records\/([a-zA-Z0-9_-]+)$/);
   const delTargetId = delMatch ? delMatch[1] : (path === '/api/records' ? url.searchParams.get('id') : null);
   if (delTargetId && method === 'DELETE') {
@@ -205,7 +205,7 @@ export async function handleRecordRoutes(request, env, url, session) {
       const updated = records.filter(r => r.id !== targetId);
       await saveRecords(env, updated, `Delete record ${targetId}`);
 
-      // Clean up associated photo from private repo if exists (best effort)
+      // 尽力清理私有仓库中关联的照片
       if (target.photo && target.photo.startsWith('images/')) {
         try {
           const photoFile = await getFile(env, target.photo);

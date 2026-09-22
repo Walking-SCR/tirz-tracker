@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>体重记录管理</title>
   
-  <!-- PWA & Mobile Web App Meta -->
+  <!-- PWA 与移动端 Web App 元信息 -->
   <link rel="manifest" href="manifest.json">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -15,13 +15,13 @@
   <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
   <meta name="theme-color" content="#070A0F">
   
-  <!-- Tailwind CSS -->
+  <!-- Tailwind CSS 样式框架 -->
   <script src="https://cdn.tailwindcss.com"></script>
-  <!-- Chart.js for Neon Telemetry Graph -->
+  <!-- Chart.js 霓虹遥测图表 -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <!-- Phosphor Icons -->
+  <!-- Phosphor 图标库 -->
   <script src="https://unpkg.com/@phosphor-icons/web"></script>
-  <!-- HEIC/HEIF fallback for iPhone photo uploads -->
+  <!-- 用于 iPhone 照片上传的 HEIC/HEIF 回退方案 -->
   <script src="vendor/heic2any.min.js"></script>
 
   <script>
@@ -47,7 +47,7 @@
   </script>
 
   <style>
-    /* Custom High-Tech Sci-Fi aesthetics */
+    /* 自定义高科技科幻风格 */
     body {
       background-color: #070A0F;
       color: #E2E8F0;
@@ -70,7 +70,7 @@
       border: 1px solid rgba(157, 78, 221, 0.25);
     }
 
-    /* Laser scanner animation */
+    /* 激光扫描线动画 */
     @keyframes laserSweep {
       0% { top: 0%; opacity: 0.8; }
       50% { top: 92%; opacity: 1; filter: drop-shadow(0 0 8px #00FFB2); }
@@ -88,7 +88,7 @@
       z-index: 10;
     }
 
-    /* Custom smooth scroll */
+    /* 自定义平滑滚动条 */
     ::-webkit-scrollbar {
       width: 4px;
     }
@@ -111,10 +111,10 @@
 </head>
 <body class="min-h-screen pb-16 antialiased selection:bg-cyberNeon/30">
 
-  <!-- Top Navigation / Status Header -->
+  <!-- 顶部导航 / 状态栏头部 -->
   <header class="sticky top-0 z-40 glass-hud border-b border-white/10 px-3 transition-all mobile-safe-header">
     <div class="max-w-md mx-auto flex items-center justify-between gap-1.5">
-      <!-- Left: Logo & Brand -->
+      <!-- 左侧：Logo 与品牌 -->
       <div class="flex items-center space-x-2 min-w-0">
         <div class="w-7 h-7 rounded-lg bg-gradient-to-tr from-cyberNeon/20 to-cyberCyan/20 border border-cyberNeon/40 flex-shrink-0 flex items-center justify-center text-cyberNeon shadow-[0_0_12px_rgba(0,255,178,0.25)]">
           <i class="ph-bold ph-scales text-base"></i>
@@ -128,7 +128,7 @@
         </div>
       </div>
 
-      <!-- Right Action Bar (Compact, zero wrapping) -->
+      <!-- 右侧操作栏（紧凑，不换行） -->
       <div class="flex items-center gap-1 flex-shrink-0">
         <button id="btnHeaderRefresh" class="h-7 w-7 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-neutral-300 flex items-center justify-center active:scale-95 transition" title="刷新并同步最新数据">
           <i id="headerRefreshIcon" class="ph-bold ph-arrows-clockwise text-cyberNeon text-xs"></i>
@@ -147,7 +147,7 @@
 
   <main class="max-w-md mx-auto px-4 pt-4 space-y-4">
 
-    <!-- Active GLP-1 Cycle Status Card -->
+    <!-- 当前 GLP-1 周期状态卡片 -->
     <div class="glass-hud-purple rounded-2xl p-4 relative overflow-hidden shadow-[0_0_25px_rgba(157,78,221,0.12)]">
       <div class="absolute -right-6 -bottom-6 text-cyberPurple/10 pointer-events-none">
         <i class="ph-fill ph-syringe text-9xl"></i>
@@ -164,7 +164,7 @@
         <span class="text-[11px] font-mono text-neutral-400" id="activeDoseDate">09.19 23:57 (2.5ml)</span>
       </div>
 
-      <!-- Dose Cycle Progress bar -->
+      <!-- 给药周期进度条 -->
       <div class="mt-3">
         <div class="flex justify-between items-center text-[11px] font-mono mb-1.5">
           <span class="text-neutral-300 flex items-center gap-1">
@@ -178,9 +178,9 @@
       </div>
     </div>
 
-    <!-- Metric Overview Grid (Compared with baseline 174.7 & Target 148) -->
+    <!-- 指标概览网格（对比基准 174.7 与目标 148） -->
     <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-      <!-- Total Weight Drop -->
+      <!-- 累计体重降幅 -->
       <div class="glass-hud rounded-2xl p-3 text-center relative">
         <div class="text-[10px] font-mono text-cyberTextDim flex items-center justify-center gap-1">
           <span>初始累计净减</span>
@@ -189,7 +189,7 @@
         <div class="text-[9px] font-mono text-neutral-500 mt-0.5" id="statTotalSub">基准: 174.7 斤</div>
       </div>
 
-      <!-- Target Weight & Remaining Distance -->
+      <!-- 目标体重与剩余差距 -->
       <div class="glass-hud rounded-2xl p-3 text-center relative">
         <div class="text-[10px] font-mono text-cyberTextDim flex items-center justify-center gap-1">
           <i class="ph-bold ph-flag-pennant text-cyberCyan"></i>
@@ -199,14 +199,14 @@
         <div class="text-[9px] font-mono text-neutral-500 mt-0.5" id="statTargetSub">距离目标差距</div>
       </div>
 
-      <!-- Weekly / Cycle Drop -->
+      <!-- 每周 / 周期降幅 -->
       <div class="glass-hud rounded-2xl p-3 text-center relative">
         <div class="text-[10px] font-mono text-cyberTextDim">空腹历史低位</div>
         <div class="text-lg font-mono font-black text-cyberCyan mt-1" id="statLowestWeight">167.8 斤</div>
         <div class="text-[9px] font-mono text-neutral-500 mt-0.5" id="statLowestDate">09.19 破峰</div>
       </div>
 
-      <!-- Latest Weight -->
+      <!-- 最新体重 -->
       <div class="glass-hud rounded-2xl p-3 text-center relative">
         <div class="text-[10px] font-mono text-cyberTextDim">当前记录点</div>
         <div class="text-lg font-mono font-black text-white mt-1" id="statCurrentWeight">170.3 斤</div>
@@ -214,7 +214,7 @@
       </div>
     </div>
 
-    <!-- The Visual Scale Scanner Card (Dual Upload Inputs: Camera + Gallery) -->
+    <!-- 视觉秤面扫描卡片（双上传入口：相机 + 相册） -->
     <div class="glass-hud rounded-2xl p-4 border border-cyberNeon/30 relative shadow-[0_0_25px_rgba(0,255,178,0.1)]">
       <div class="flex items-center justify-between mb-3">
         <div class="flex items-center space-x-2">
@@ -224,10 +224,10 @@
         <span class="text-[10px] font-mono px-2 py-0.5 rounded bg-cyberNeon/10 text-cyberNeon border border-cyberNeon/20">OCR 自动解析</span>
       </div>
 
-      <!-- The Big Interactive Scanner Target -->
+      <!-- 大型可交互扫描区域 -->
       <div class="relative rounded-2xl bg-black/50 p-4 border-2 border-dashed border-cyberNeon/30 hover:border-cyberNeon/60 transition-all text-center">
         
-        <!-- Scanner preview & animation container -->
+        <!-- 扫描预览与动画容器 -->
         <div id="scannerOverlay" class="hidden absolute inset-0 z-20 bg-black/90 backdrop-blur-sm flex flex-col items-center justify-center rounded-2xl">
           <div class="laser-line"></div>
           <i class="ph-bold ph-scan text-4xl text-cyberNeon animate-pulse mb-2"></i>
@@ -235,7 +235,7 @@
           <span class="text-[10px] text-cyberTextDim mt-1" id="scanSubText">检测数字形态与拍摄时间</span>
         </div>
 
-        <!-- Dual Hidden file inputs: one for system gallery/files, one for direct camera -->
+        <!-- 两个隐藏的文件输入：一个用于系统相册/文件，一个用于直接拍照 -->
         <input type="file" id="scaleGalleryInput" accept="image/*,.heic,.heif" class="absolute opacity-0 pointer-events-none w-0 h-0">
         <input type="file" id="scaleCameraInput" accept="image/*,.heic,.heif" capture="environment" class="absolute opacity-0 pointer-events-none w-0 h-0">
         
@@ -251,7 +251,7 @@
             <p class="text-[11px] text-cyberTextDim mt-0.5">拍摄或选取秤面数显照片 · 自动解析重量并归档</p>
           </div>
 
-          <!-- Upload Action Buttons -->
+          <!-- 上传操作按钮 -->
           <div class="grid grid-cols-2 gap-2.5 w-full pt-1.5 max-w-xs">
             <label for="scaleGalleryInput" id="btnPickGallery" class="cursor-pointer py-2.5 px-3 rounded-xl bg-cyberCyan/15 hover:bg-cyberCyan/25 border border-cyberCyan/40 text-cyberCyan font-mono text-xs font-bold flex items-center justify-center gap-1.5 active:scale-95 transition shadow-sm select-none">
               <i class="ph-bold ph-images text-base"></i> <span>手机相册选择</span>
@@ -264,7 +264,7 @@
       </div>
     </div>
 
-    <!-- Weight Trend Chart Starting strictly from 9/12 first dose -->
+    <!-- 体重趋势图，严格从 9/12 首针开始 -->
     <div class="glass-hud rounded-2xl p-4 border border-white/10">
       <div class="flex items-center justify-between mb-2">
         <div class="flex items-center gap-2">
@@ -274,12 +274,12 @@
         <span class="text-[10px] font-mono text-cyberPurple font-semibold">初始 174.7 斤为基准原点</span>
       </div>
 
-      <!-- Canvas container with fixed height for responsiveness -->
+      <!-- Canvas 容器，固定高度以适配响应式 -->
       <div class="w-full h-56 relative">
         <canvas id="weightChartCanvas"></canvas>
       </div>
 
-      <!-- Quick Analysis Bar -->
+      <!-- 快速分析栏 -->
       <div class="mt-3 pt-3 border-t border-white/5 grid grid-cols-3 gap-2 text-center text-[10px] font-mono">
         <div class="bg-white/5 rounded-lg py-1.5 px-1">
           <span class="text-cyberTextDim block">周期起点</span>
@@ -296,7 +296,7 @@
       </div>
     </div>
 
-    <!-- History Feed & Scale Image Records -->
+    <!-- 历史记录流与秤面图像档案 -->
     <div class="space-y-3">
       <div class="flex items-center justify-between px-1">
         <div class="flex items-center gap-1.5">
@@ -306,15 +306,15 @@
         <span class="text-[10px] font-mono text-cyberTextDim" id="recordCountBadge">共 8 条</span>
       </div>
 
-      <!-- Records list container -->
+      <!-- 记录列表容器 -->
       <div id="recordsListContainer" class="space-y-2.5">
-        <!-- Dynamically injected via JavaScript -->
+        <!-- 由 JavaScript 动态注入 -->
       </div>
     </div>
 
   </main>
 
-  <!-- AI Recognition Confirmation Modal -->
+  <!-- AI 识别确认弹窗 -->
   <div id="confirmModal" class="hidden fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4">
     <div class="glass-hud rounded-3xl p-5 max-w-sm w-full border border-cyberNeon/40 shadow-[0_0_35px_rgba(0,255,178,0.2)] space-y-4">
       
@@ -328,7 +328,7 @@
         </button>
       </div>
 
-      <!-- Photo Thumbnail preview -->
+      <!-- 照片缩略图预览 -->
       <div class="relative w-full h-36 rounded-2xl overflow-hidden bg-black/60 border border-cyberNeon/30 flex items-center justify-center">
         <img id="confirmPhotoThumb" src="" class="w-full h-full object-contain">
         <div id="confirmPhotoScanBeam" class="hidden absolute inset-0 pointer-events-none overflow-hidden">
@@ -360,7 +360,7 @@
           </div>
         </div>
 
-        <!-- Condition Tag Picker -->
+        <!-- 称重状态标签选择器 -->
         <div>
           <label class="text-[11px] font-mono text-cyberTextDim block mb-1.5">称重状态</label>
           <div class="flex flex-wrap gap-1.5" id="tagPickerGroup">
@@ -389,16 +389,16 @@
     </div>
   </div>
 
-  <!-- Hidden input for updating specific record photo -->
+  <!-- 用于更新指定记录照片的隐藏输入 -->
   <input type="file" id="replacePhotoInput" accept="image/*,.heic,.heif" class="hidden">
 
-  <!-- Cyber Toast Notification -->
+  <!-- 赛博风格 Toast 通知 -->
   <div id="cyberToast" class="fixed left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-full glass-hud border border-cyberNeon/50 text-white font-mono text-xs shadow-[0_0_25px_rgba(0,255,178,0.3)] flex items-center gap-2 pointer-events-none transition-all duration-300 opacity-0 translate-y-[-20px]" style="top: calc(env(safe-area-inset-top, 0px) + 16px);">
     <i id="toastIcon" class="ph-fill ph-check-circle text-cyberNeon"></i>
     <span id="toastText">系统就绪</span>
   </div>
 
-  <!-- Custom Confirmation Dialog (No window.confirm) -->
+  <!-- 自定义确认对话框（不使用 window.confirm） -->
   <div id="customConfirmModal" class="hidden fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
     <div class="glass-hud rounded-2xl p-4 max-w-xs w-full border border-white/10 text-center space-y-3">
       <i class="ph-bold ph-warning-circle text-3xl text-amber-400"></i>
@@ -410,7 +410,7 @@
     </div>
   </div>
 
-  <!-- Mobile PWA Installation Guide Banner -->
+  <!-- 移动端 PWA 安装引导横幅 -->
   <div id="pwaInstallBanner" class="hidden fixed bottom-4 left-4 right-4 z-40 max-w-md mx-auto">
     <div class="glass-hud rounded-2xl p-3 border border-cyberCyan/40 flex items-center justify-between text-xs font-mono shadow-[0_0_20px_rgba(0,240,255,0.2)]">
       <div class="flex items-center gap-2.5">
@@ -429,7 +429,7 @@
   </div>
 
   
-  <!-- Auth Overlay (Shown when unauthenticated) -->
+  <!-- 认证遮罩层（未认证时显示） -->
   <div id="authModal" class="hidden fixed inset-0 z-50 bg-black/95 backdrop-blur-xl flex items-center justify-center p-4">
     <div class="glass-hud rounded-3xl max-w-sm w-full border border-cyberNeon/40 p-6 space-y-4 shadow-[0_0_50px_rgba(0,255,178,0.25)]">
       <div class="flex items-center justify-between border-b border-white/10 pb-3">
@@ -447,7 +447,7 @@
         </button>
       </div>
 
-      <!-- Notice box -->
+      <!-- 提示信息框 -->
       <div id="authAlertBox" class="rounded-xl p-3 bg-white/5 border border-white/10 text-xs font-mono text-neutral-300 space-y-1">
         <div class="flex items-center gap-1.5 text-cyberCyan font-bold">
           <i class="ph-fill ph-fingerprint"></i>
@@ -458,7 +458,7 @@
         </p>
       </div>
 
-      <!-- Email Login Form -->
+      <!-- 邮箱登录表单 -->
       <div class="space-y-3 font-mono">
         <div>
           <label class="text-xs text-neutral-400 block mb-1">本人授权邮箱</label>
@@ -476,7 +476,7 @@
         </button>
       </div>
 
-      <!-- Device Setup link if unbound -->
+      <!-- 未绑定时显示设备设置入口 -->
       <div class="pt-1 text-center border-t border-white/5">
         <button id="btnOpenSetupModal" class="text-[11px] font-mono text-cyberCyan hover:underline">
           <i class="ph-bold ph-key"></i> 高级口令初始化设备绑定
@@ -485,7 +485,7 @@
     </div>
   </div>
 
-  <!-- Device Setup / Bootstrap Modal -->
+  <!-- 设备设置 / 初始化引导弹窗 -->
   <div id="deviceSetupModal" class="hidden fixed inset-0 z-50 bg-black/90 backdrop-blur-md flex items-center justify-center p-4">
     <div class="glass-hud rounded-2xl max-w-sm w-full border border-cyberCyan/40 p-5 space-y-4 shadow-[0_0_35px_rgba(0,240,255,0.2)] max-h-[90vh] overflow-y-auto">
       <div class="flex items-center justify-between border-b border-white/10 pb-3">
@@ -525,7 +525,7 @@
     </div>
   </div>
 
-  <!-- Session & Device Info Drawer/Modal -->
+  <!-- 会话与设备信息抽屉/弹窗 -->
   <div id="sessionInfoModal" class="hidden fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
     <div class="glass-hud rounded-2xl max-w-xs w-full border border-white/10 p-5 space-y-4">
       <div class="flex items-center justify-between border-b border-white/10 pb-2.5">
@@ -586,18 +586,18 @@
 
 
   <script>
-    // In-memory & LocalStorage state (Upgraded to v3 to guarantee real data override)
+    // 内存与 LocalStorage 状态（已升级至 v3，确保真实数据覆盖）
     const STORAGE_KEY_WEIGHTS = 'tirzepatide_weights_v3';
     const STORAGE_KEY_DOSES = 'tirzepatide_doses_v3';
 
-    // GitHub Pages remains a supported shell; only its API calls cross to the Worker.
-    // Gemini credentials never leave the Worker and are not accepted from the browser.
+    // GitHub Pages 仍作为受支持的壳层；仅其 API 调用会转发到 Worker。
+    // Gemini 凭证永不离开 Worker，也不会从浏览器端接收。
     const WORKER_API_BASE = 'https://tirz-tracker.walkingscr.workers.dev';
     const API_BASE = (window.location.protocol === 'file:' || window.location.hostname.endsWith('.github.io'))
       ? WORKER_API_BASE
       : '';
 
-    // Cloudflare Worker Zero-Trust Gateway Adapter
+    // Cloudflare Worker 零信任网关适配器
     const CloudStorageAdapter = {
       sessionState: {
         authenticated: false,
@@ -817,7 +817,7 @@
         return true;
       },
 
-      // Resolves photo URL or private proxy endpoint
+      // 解析照片 URL 或私有代理端点
       resolvePhotoUrl(photoStr) {
         if (!photoStr) return '';
         if (photoStr.startsWith('data:') || photoStr.startsWith('blob:') || photoStr.startsWith('<svg') || photoStr.startsWith('http://') || photoStr.startsWith('https://')) {
@@ -836,11 +836,11 @@
     let targetRecordForPhotoUpdate = null;
     let pendingConfirmAction = null;
 
-    // Biometric telemetry data and photos are stored exclusively in tirz-tracker-data
+    // 体重遥测数据与照片仅存储在 tirz-tracker-data 中
     const defaultDoses = [];
     const defaultWeights = [];
 
-    // Helper functions
+    // 辅助函数
     function showToast(msg, isError = false) {
       const toast = document.getElementById('cyberToast') || document.getElementById('toast');
       const text = document.getElementById('toastText') || document.getElementById('toastMsg');
@@ -951,7 +951,7 @@
       CloudStorageAdapter.cleanLegacyTokens();
 
       try {
-        // Clear out old mock records from localStorage if present
+        // 若存在，则清除 localStorage 中的旧模拟记录
         const legacyWeights = localStorage.getItem('tirzepatide_weights_v2');
         if (legacyWeights && (legacyWeights.includes('wt-0') || legacyWeights.includes('data:image/svg'))) {
           localStorage.removeItem('tirzepatide_weights_v2');
@@ -998,7 +998,7 @@
 
       refreshAllUI();
 
-      // Check session auth status
+      // 检查会话认证状态
       try {
         const status = await CloudStorageAdapter.checkAuth();
         updateSessionStatusUI(status);
@@ -1011,18 +1011,18 @@
         const authModal = document.getElementById('authModal');
 
         if (isBoundOrAuthed) {
-          // Device is already bound or authenticated: strictly ensure setup modal is closed
+          // 设备已绑定或已认证：严格确保设置弹窗处于关闭状态
           if (deviceSetupModal) deviceSetupModal.classList.add('hidden');
           if (authModal) authModal.classList.add('hidden');
 
-          // Clean URL so refresh / PWA launch never triggers setup mode again
+          // 清理 URL，使刷新 / PWA 启动不再触发设置模式
           if (hasSetupQuery && window.history.replaceState) {
             try {
               window.history.replaceState({}, document.title, window.location.origin + '/');
             } catch (e) {}
           }
         } else if (hasSetupQuery) {
-          // Only show setup modal on a truly unauthenticated/unbound device with explicit setup query
+          // 仅在真正未认证/未绑定且带有明确 setup 查询参数时显示设置弹窗
           if (deviceSetupModal) deviceSetupModal.classList.remove('hidden');
         }
 
@@ -1031,7 +1031,7 @@
           if (emailDisplay) emailDisplay.textContent = status.email;
         }
 
-        // Authoritative sync from tirz-tracker-data
+        // 从 tirz-tracker-data 进行权威同步
         await syncWithCloud(true);
       } catch (e) {
         console.warn('Auth check error:', e);
@@ -1150,7 +1150,7 @@
         container.appendChild(card);
       });
 
-      // Bind photo click preview
+      // 绑定照片点击预览
       container.querySelectorAll('[data-view-img]').forEach(box => {
         box.addEventListener('click', () => {
           const id = box.getAttribute('data-view-img');
@@ -1168,7 +1168,7 @@
         });
       });
 
-      // Bind delete buttons (wired to showCyberConfirm)
+      // 绑定删除按钮（接入 showCyberConfirm）
       container.querySelectorAll('[data-del-id]').forEach(btn => {
         btn.addEventListener('click', (e) => {
           e.stopPropagation();
@@ -1196,7 +1196,7 @@
     }
 
     function renderDosesTimeline() {
-      // Updates timeline and stats
+      // 更新时间线与统计信息
       calculateStats();
     }
 
@@ -1239,7 +1239,7 @@
       const totalLoss = (latest - baseline).toFixed(1);
       const diffToTarget = (latest - TARGET_WEIGHT);
 
-      // Find lowest fasting weight
+      // 查找最低空腹体重
       const fastingRecords = sorted.filter(r => (r.condition || '').includes('空腹'));
       const pool = fastingRecords.length > 0 ? fastingRecords : sorted;
       const lowestRec = pool.reduce((min, cur) => cur.weight < min.weight ? cur : min, pool[0]);
@@ -1275,7 +1275,7 @@
         statLowestDate.textContent = `${d} 破峰`;
       }
 
-      // Quick analysis bar below chart
+      // 图表下方的快速分析栏
       if (quickStartPoint) {
         const firstD = sorted[0].date ? sorted[0].date.slice(5) : '';
         quickStartPoint.textContent = `${firstD} (${baseline.toFixed(1)}斤)`;
@@ -1290,7 +1290,7 @@
         quickDailyDrop.textContent = `约 ${daily} 斤/天`;
       }
 
-      // Active Dose cycle countdown
+      // 当前给药周期倒计时
       if (doseRecords.length > 0) {
         const sortedDoses = [...doseRecords].sort((a, b) => b.timestamp - a.timestamp);
         const lastDose = sortedDoses[0];
@@ -1426,16 +1426,16 @@
     };
 
     // =========================================================================
-    // Edge-Cloud Dual-Track Scale Vision Engine (端云双轨极速识别引擎)
-    // Track 1: Local on-device instant digit scanner (Canvas & WebKit Vision)
-    // Track 2: Cloud ultra-optimized Gemini multimodal verification (0-thinking)
+    // 端云双轨极速识别引擎
+    // 轨道 1：本地端侧即时数字扫描器（Canvas 与 WebKit Vision）
+    // 轨道 2：云端超优化 Gemini 多模态校验（零思考）
     // =========================================================================
     const ScaleVisionEngine = {
       async scanLocally(canvas) {
         if (!canvas) return null;
         const startTime = Date.now();
 
-        // 1. Native On-Device Vision (Apple Vision Framework / Chrome TextDetector)
+        // 1. 原生端侧视觉（Apple Vision Framework / Chrome TextDetector）
         if (typeof window.TextDetector === 'function') {
           try {
             const detector = new window.TextDetector();
@@ -1452,7 +1452,7 @@
           }
         }
 
-        // 2. High-speed Canvas pixel projection scanner (LED matrix / LCD 7-segment heuristic)
+        // 2. 高速 Canvas 像素投影扫描器（LED 点阵 / LCD 七段数码管启发式）
         try {
           const ctx = canvas.getContext('2d', { willReadFrequently: true });
           if (ctx) {
@@ -1494,7 +1494,7 @@
       if (!file) return null;
       let canvas = null;
 
-      // Hardware-accelerated decode via createImageBitmap (iOS 15+, instant)
+      // 通过 createImageBitmap 进行硬件加速解码（iOS 15+，瞬时完成）
       if (typeof createImageBitmap === 'function') {
         try {
           const bitmap = await createImageBitmap(file);
@@ -1526,7 +1526,7 @@
         }
       }
 
-      // Fallback Image element loader
+      // 回退的 Image 元素加载方式
       return new Promise((resolve) => {
         let objectUrl = null;
         try { objectUrl = URL.createObjectURL(file); } catch (e) {}
@@ -1569,7 +1569,7 @@
       });
     }
 
-    // High-speed client image compression to JPEG (optimized for iOS & scale LCD digits)
+    // 客户端高速图片压缩为 JPEG（针对 iOS 与秤面 LCD 数字优化）
     async function compressScaleImage(file, maxDimension = 540, quality = 0.65) {
       const prep = await prepareScaleImage(file, maxDimension, quality);
       return prep ? prep.dataUrl : '';
@@ -1678,7 +1678,7 @@
       });
     }
 
-    // Interactive event bindings
+    // 交互事件绑定
     document.addEventListener('DOMContentLoaded', () => {
       loadData();
 
@@ -1689,7 +1689,7 @@
         }, 300);
       }
 
-      // Top Header Refresh Button
+      // 顶部头部刷新按钮
       const btnHeaderRefresh = document.getElementById('btnHeaderRefresh');
       const headerRefreshIcon = document.getElementById('headerRefreshIcon');
       if (btnHeaderRefresh) {
@@ -1703,7 +1703,7 @@
         });
       }
 
-      // Gallery & Camera File Pickers
+      // 相册与相机文件选择器
       const btnPickGallery = document.getElementById('btnPickGallery');
       const btnPickCamera = document.getElementById('btnPickCamera');
       const scaleGalleryInput = document.getElementById('scaleGalleryInput');
@@ -1762,7 +1762,7 @@
         }
       }
 
-      // Dual-track session manager
+      // 双轨会话管理器
       let activeOcrSessionId = 0;
 
       async function handleScaleImageUpload(file) {
@@ -1779,7 +1779,7 @@
         const confirmRemarkInput = document.getElementById('confirmRemarkInput');
         const aiDetectConfidence = document.getElementById('aiDetectConfidence');
 
-        // 1. Instantly display preview URL with zero delay
+        // 1. 零延迟即时显示预览 URL
         const quickPreviewUrl = URL.createObjectURL(file);
         if (confirmPhotoThumb) confirmPhotoThumb.src = quickPreviewUrl;
         if (confirmPhotoScanBeam) confirmPhotoScanBeam.classList.remove('hidden');
@@ -1800,7 +1800,7 @@
         }
         if (confirmRemarkInput) confirmRemarkInput.value = '';
 
-        // Show animated high-tech loading state inside the modal
+        // 在弹窗内显示动态的高科技加载状态
         if (aiDetectConfidence) {
           aiDetectConfidence.className = 'text-[10px] text-cyberCyan font-mono mt-1 flex items-center justify-between animate-pulse';
           aiDetectConfidence.innerHTML = `
@@ -1818,7 +1818,7 @@
         else selectedConfirmTag = '晚上吃饱';
         updateConditionTagUI(selectedConfirmTag);
 
-        // Immediately open popup modal with 0ms delay!
+        // 以 0ms 延迟立即打开弹窗！
         if (confirmModal) confirmModal.classList.remove('hidden');
         if (scannerOverlay) scannerOverlay.classList.add('hidden');
 
@@ -1837,7 +1837,7 @@
         confirmWeightInput.addEventListener('input', onUserManualInput, { once: true });
 
         try {
-          // Fast preparation (540px, ~18KB payload)
+          // 快速预处理（540px，约 18KB 载荷）
           const prep = await prepareScaleImage(file, 540, 0.65);
           if (!prep || !prep.dataUrl) {
             const conversionError = new Error('识别超时，请重试');
@@ -1847,7 +1847,7 @@
           currentParsedImageBase64 = prep.dataUrl;
           if (confirmPhotoThumb) confirmPhotoThumb.src = prep.dataUrl;
 
-          // Track 1: Client-Side Local Scan (fires in ~30ms)
+          // 轨道 1：客户端本地扫描（约 30ms 内触发）
           ScaleVisionEngine.scanLocally(prep.canvas).then((localRes) => {
             if (currentSession !== activeOcrSessionId || isUserEdited) return;
             if (localRes && localRes.weight) {
@@ -1870,7 +1870,7 @@
             }
           }).catch(() => {});
 
-          // Track 2: Cloud Gemini Call (fires in parallel, ultra-fast 0-thinking)
+          // 轨道 2：云端 Gemini 调用（并行触发，超快零思考）
           const aiResult = await analyzeScaleWithGemini(prep.dataUrl);
           const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
 
@@ -1947,7 +1947,7 @@
       }
 
       // ==========================================
-      // iOS PWA & Standalone Auto-Refresh on Re-open
+      // iOS PWA 与独立模式下重新打开时自动刷新
       // ==========================================
       let isMediaSelecting = false;
       let hiddenTimestamp = 0;
@@ -1965,7 +1965,7 @@
       function handleAppResume(source = '') {
         if (isAppReloading) return;
 
-        // If user is actively taking photo or has an unsubmitted weight modal open, don't wipe their form!
+        // 若用户正在拍照或有未提交的体重弹窗打开，不要清空其表单！
         if (isUserInteractingWithModal()) {
           console.log(`[PWA Lifecycle] User interacting with form/camera, background sync instead of full reload (${source})`);
           syncWithCloud(true);
@@ -2000,11 +2000,11 @@
       }
 
       window.addEventListener('focus', () => {
-        // If file picker or camera dialog was dismissed/cancelled
+        // 若文件选择器或相机对话框被关闭/取消
         setTimeout(() => { isMediaSelecting = false; }, 1000);
       });
 
-      // 1. Visibility Change: fires when iOS PWA / Safari tab is switched to background and resumed
+      // 1. 可见性变化：iOS PWA / Safari 标签页切到后台再恢复时触发
       document.addEventListener('visibilitychange', () => {
         if (document.visibilityState === 'hidden') {
           hiddenTimestamp = Date.now();
@@ -2013,24 +2013,24 @@
           const elapsed = hiddenTimestamp ? (now - hiddenTimestamp) : 0;
           hiddenTimestamp = 0;
 
-          // If away for more than 1.5 seconds (indicating user left and re-opened the app)
+          // 若离开超过 1.5 秒（表示用户离开后重新打开了应用）
           if (elapsed >= 1500) {
             handleAppResume(`visibilitychange:${elapsed}ms`);
           } else {
-            // Brief pause (e.g. system banner or quick gesture), do silent sync
+            // 短暂停顿（如系统横幅或快速手势），执行静默同步
             syncWithCloud(true);
           }
         }
       });
 
-      // 2. BFCache restoration (when iOS restores the frozen page from Back-Forward Cache)
+      // 2. BFCache 恢复（iOS 从往返缓存恢复冻结页面时）
       window.addEventListener('pageshow', (event) => {
         if (event.persisted) {
           handleAppResume('pageshow:persisted');
         }
       });
 
-      // Manual Add Button
+      // 手动补录按钮
       const btnManualAdd = document.getElementById('btnManualAdd');
       if (btnManualAdd) {
         btnManualAdd.addEventListener('click', () => {
@@ -2064,7 +2064,7 @@
         });
       }
 
-      // Confirm Modal buttons
+      // 确认弹窗按钮
       const btnCloseModal = document.getElementById('btnCloseModal');
       const btnCancelConfirm = document.getElementById('btnCancelConfirm');
       const btnSaveConfirm = document.getElementById('btnSaveConfirm');
@@ -2133,7 +2133,7 @@
         });
       }
 
-      // Delete confirmation dialog buttons
+      // 删除确认对话框按钮
       const customConfirmModal = document.getElementById('customConfirmModal') || document.getElementById('cyberConfirmModal');
       const customConfirmCancel = document.getElementById('customConfirmCancel');
       const customConfirmOk = document.getElementById('customConfirmOk');
@@ -2156,7 +2156,7 @@
         });
       }
 
-      // Replace photo on specific record
+      // 替换指定记录的照片
       const replacePhotoInput = document.getElementById('replacePhotoInput') || document.getElementById('recordPhotoUpdateInput');
       if (replacePhotoInput) {
         replacePhotoInput.addEventListener('change', async (e) => {
@@ -2195,7 +2195,7 @@
         });
       }
 
-      // Close photo viewer modal
+      // 关闭照片查看弹窗
       const closePhotoViewerModal = document.getElementById('closePhotoViewerModal');
       const photoViewerModal = document.getElementById('photoViewerModal');
       if (closePhotoViewerModal && photoViewerModal) {
@@ -2204,7 +2204,7 @@
         });
       }
 
-      // User session modal
+      // 用户会话弹窗
       const btnUserSessionModal = document.getElementById('btnUserSessionModal');
       const sessionInfoModal = document.getElementById('sessionInfoModal');
       const btnCloseSessionInfoModal = document.getElementById('btnCloseSessionInfoModal');
@@ -2384,7 +2384,7 @@
         });
       }
 
-      // Settings modal GitHub token listener
+      // 设置弹窗 GitHub Token 监听器
       const inputUserGithubToken = document.getElementById('inputUserGithubToken');
       const btnSaveGithubToken = document.getElementById('btnSaveGithubToken');
 
@@ -2409,7 +2409,7 @@
 
     });
 
-    // Auto-update Service Worker & ensure latest client code is active
+    // 自动更新 Service Worker，确保最新客户端代码生效
     if ('serviceWorker' in navigator) {
       if ('caches' in window) {
         caches.keys().then(names => {

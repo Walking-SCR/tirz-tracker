@@ -1,4 +1,4 @@
-// GitHub REST API client for server-side Private DATA Repo operations
+// GitHub REST API 客户端，用于服务端操作私有数据仓库
 
 function getHeaders(env) {
   const token = (
@@ -32,7 +32,7 @@ function getBranch(env) {
   return env.GITHUB_BRANCH || 'main';
 }
 
-// UTF-8 string to Base64
+// UTF-8 字符串转 Base64
 function utf8ToBase64(str) {
   const bytes = new TextEncoder().encode(str);
   let binary = '';
@@ -42,7 +42,7 @@ function utf8ToBase64(str) {
   return btoa(binary);
 }
 
-// Base64 to UTF-8 string
+// Base64 转 UTF-8 字符串
 function base64ToUtf8(b64) {
   const cleanB64 = b64.replace(/\s/g, '');
   const binary = atob(cleanB64);
@@ -50,7 +50,7 @@ function base64ToUtf8(b64) {
   return new TextDecoder('utf-8').decode(bytes);
 }
 
-// Fetch file metadata & content from GitHub
+// 从 GitHub 获取文件元数据与内容
 export async function getFile(env, filePath) {
   const owner = getOwner(env);
   const repo = getDataRepo(env);
@@ -71,7 +71,7 @@ export async function getFile(env, filePath) {
   return data; // { sha, content, size, path, ... }
 }
 
-// Put/update file in GitHub with automatic 409 conflict retry
+// 写入或更新 GitHub 文件，遇 409 冲突时自动重试
 export async function putFile(env, filePath, contentBase64, commitMessage, sha = null, retryCount = 0) {
   const owner = getOwner(env);
   const repo = getDataRepo(env);
@@ -95,7 +95,7 @@ export async function putFile(env, filePath, contentBase64, commitMessage, sha =
   });
 
   if (res.status === 409 && retryCount < 1) {
-    // 409 Conflict: another write happened, re-fetch latest SHA and retry once
+    // 409 冲突：说明有其他写入同时发生，重新拉取最新 SHA 后重试一次
     console.warn(`409 Conflict on ${filePath}, retrying once...`);
     const latest = await getFile(env, filePath);
     return await putFile(env, filePath, contentBase64, commitMessage, latest ? latest.sha : null, retryCount + 1);
@@ -109,7 +109,7 @@ export async function putFile(env, filePath, contentBase64, commitMessage, sha =
   return await res.json();
 }
 
-// Delete file from GitHub (best effort)
+// 从 GitHub 删除文件（尽力而为，失败不抛错）
 export async function deleteFile(env, filePath, sha, commitMessage = 'Delete file') {
   const owner = getOwner(env);
   const repo = getDataRepo(env);
@@ -131,7 +131,7 @@ export async function deleteFile(env, filePath, sha, commitMessage = 'Delete fil
   return res.ok;
 }
 
-// Get weight records array
+// 读取体重记录数组
 export async function getRecords(env) {
   const file = await getFile(env, 'data/records.json');
   if (!file || !file.content) return { records: [], sha: null };
@@ -147,7 +147,7 @@ export async function getRecords(env) {
   }
 }
 
-// Save weight records array
+// 保存体重记录数组
 export async function saveRecords(env, records, message = 'Update biometric records') {
   const existing = await getFile(env, 'data/records.json');
   const sha = existing ? existing.sha : null;
@@ -174,7 +174,7 @@ export async function saveRecords(env, records, message = 'Update biometric reco
   return await putFile(env, 'data/records.json', b64, message, sha);
 }
 
-// Get dose records array
+// 读取用药记录数组
 export async function getDoses(env) {
   const file = await getFile(env, 'data/doses.json');
   if (file && file.content) {
@@ -190,7 +190,7 @@ export async function getDoses(env) {
     }
   }
 
-  // Fallback to records.json doses
+  // 回退：从 records.json 中读取用药数据
   try {
     const recFile = await getFile(env, 'data/records.json');
     if (recFile && recFile.content) {
@@ -207,7 +207,7 @@ export async function getDoses(env) {
   return { doses: [], sha: file ? file.sha : null };
 }
 
-// Save dose records array
+// 保存用药记录数组
 export async function saveDoses(env, doses, message = 'Update GLP-1 doses') {
   const existing = await getFile(env, 'data/doses.json');
   const sha = existing ? existing.sha : null;
@@ -226,7 +226,7 @@ function imageExtensionFromDataUrl(base64Data) {
   return 'webp';
 }
 
-// Upload the photo using an extension that matches its actual MIME type.
+// 上传照片，文件扩展名与图片实际 MIME 类型保持一致
 export async function uploadPhoto(env, year, month, filename, base64Data) {
   const extension = imageExtensionFromDataUrl(base64Data);
   const baseName = String(filename || 'photo').replace(/\.[a-z0-9]+$/i, '');
@@ -239,7 +239,7 @@ export async function uploadPhoto(env, year, month, filename, base64Data) {
   };
 }
 
-// Fetch a private photo safely via GitHub API JSON to avoid 302 cross-domain redirect header stripping
+// 通过 GitHub API 的 JSON 响应安全获取私有照片，避免 302 跨域重定向导致响应头被剥离
 export async function fetchPrivatePhoto(env, photoPath) {
   const file = await getFile(env, photoPath);
   if (!file || !file.content) return null;

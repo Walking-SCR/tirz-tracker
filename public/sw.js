@@ -1,4 +1,4 @@
-// Service Worker for Tirzepatide Tracker V2 PWA (Static-Only Cache)
+// Tirzepatide Tracker V2 PWA 的 Service Worker（仅缓存静态资源）
 const CACHE_NAME = 'tirz-tracker-v5.2';
 const STATIC_ASSETS = [
   './',
@@ -36,12 +36,12 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
 
-  // STRICT PRIVACY RULE: NEVER cache any /api/* routes (records, photos, auth)
+  // 严格隐私规则：绝不缓存任何 /api/* 路由（记录、照片、认证）
   if (url.pathname.startsWith('/api/')) {
-    return; // Pass through to network
+    return; // 直接放行到网络
   }
 
-  // Network-First for HTML navigation to guarantee the latest version is loaded on every device
+  // HTML 导航采用「网络优先」，确保每台设备每次都加载最新版本
   if (event.request.mode === 'navigate' || url.pathname === '/' || url.pathname.endsWith('/index.html')) {
     event.respondWith(
       fetch(event.request).then((networkResponse) => {
@@ -55,7 +55,7 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Runtime cache for static CDN libraries (Tailwind, Chart.js, Phosphor icons)
+  // 静态 CDN 库的运行时缓存（Tailwind、Chart.js、Phosphor 图标）
   if (url.hostname.includes('cdn.jsdelivr.net') || url.hostname.includes('cdn.tailwindcss.com') || url.hostname.includes('unpkg.com')) {
     event.respondWith(
       caches.open(CACHE_NAME).then(async (cache) => {
@@ -72,7 +72,7 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Stale-While-Revalidate for app static files
+  // 应用静态文件采用「陈旧内容先返回，同时后台重新验证」策略
   event.respondWith(
     caches.match(event.request).then((cachedResponse) => {
       const fetchPromise = fetch(event.request).then((networkResponse) => {

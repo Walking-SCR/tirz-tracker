@@ -4,7 +4,7 @@ export async function handleDoseRoutes(request, env, url, session) {
   const path = url.pathname;
   const method = request.method;
 
-  // 1. GET /api/doses
+  // 1. GET /api/doses：读取全部针剂记录
   if (path === '/api/doses' && method === 'GET') {
     if (!env.GITHUB_TOKEN) {
       return new Response(JSON.stringify({
@@ -35,7 +35,7 @@ export async function handleDoseRoutes(request, env, url, session) {
     });
   }
 
-  // 2. POST /api/doses
+  // 2. POST /api/doses：新增针剂记录
   if (path === '/api/doses' && method === 'POST') {
     if (!env.GITHUB_TOKEN) {
       return new Response(JSON.stringify({
@@ -74,7 +74,7 @@ export async function handleDoseRoutes(request, env, url, session) {
     });
   }
 
-  // 3. DELETE /api/doses/:id
+  // 3. DELETE /api/doses/:id：删除指定针剂记录
   const delMatch = path.match(/^\/api\/doses\/([a-zA-Z0-9_-]+)$/);
   const delTargetId = delMatch ? delMatch[1] : (path === '/api/doses' ? url.searchParams.get('id') : null);
   if (delTargetId && method === 'DELETE') {
