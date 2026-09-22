@@ -101,7 +101,8 @@
 
     .timeline-viewport {
       overflow: hidden;
-      touch-action: pan-y;
+      /* 时间轴是横向手势区，显式交给应用处理，避免 iOS 将左滑抢给页面滚动。 */
+      touch-action: none;
       overscroll-behavior-x: contain;
       cursor: grab;
       user-select: none;
@@ -1926,8 +1927,12 @@
         : todayKey;
       const daysToToday = Math.max(0, timelineDaysBetween(firstDoseKey, todayKey));
       // 首针是硬边界；在今天之后保留两周浏览空间，避免滑到“无穷未来”。
-      const maxOffsetDays = firstDose ? daysToToday + 14 : 0;
-      const todayWindowOffset = Math.max(0, Math.min(maxOffsetDays, daysToToday - 3));
+      // 首针数据尚未从云端返回时也保留 28 天浏览空间，避免 maxOffset=0
+      // 把所有左滑都钳制成无动作。
+      const maxOffsetDays = firstDose ? daysToToday + 14 : 28;
+      const todayWindowOffset = firstDose
+        ? Math.max(0, Math.min(maxOffsetDays, daysToToday - 3))
+        : 0;
       // 首次本地渲染可能还没有云端给药数据；云端数据到达后重新锚定到今天，
       // 避免用户被带回首针日期。用户已经开始拖动后则保留其浏览位置。
       if (!timelineOffsetInitialized || (timelineInitialFirstDoseKey === null && firstDose)) {
