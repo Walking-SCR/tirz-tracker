@@ -145,3 +145,100 @@ test('GET /api/photos/... fetches private photo from GitHub repo', async () => {
     globalThis.fetch = originalFetch;
   }
 });
+
+test('PATCH /api/doses/:id updates dose fields and recomputes timestamp', async () => {
+  const originalFetch = globalThis.fetch;
+  const mockDoses = [
+    { id: 'dose-1', seq: '第一针', amount: '2.5mg', date: '2026-09-12', time: '20:00', intervalDays: 7 }
+  ];
+  const b64 = Buffer.from(JSON.stringify(mockDoses)).toString('base64');
+  let putBody = null;
+
+  globalThis.fetch = async (input, init) => {
+    const url = String(input);
+    if (url.includes('/contents/data/doses.json')) {
+      if (init && init.method === 'PUT') {
+        putBody = JSON.parse(init.body);
+        return new Response(JSON.stringify({ content: { sha: 'sha-3' } }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+      return new Response(JSON.stringify({ content: b64, sha: 'sha-2' }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+    return new Response('Not found', { status: 404 });
+  };
+
+  try {
+    const req = new Request('https://tracker.test/api/doses/dose-1', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ amount: '5.0mg', intervalDays: 14, date: '2026-09-19', time: '21:00' })
+    });
+    const env = { GITHUB_TOKEN: 'fake-token' };
+    const url = new URL(req.url);
+    const res = await handleDoseRoutes(req, env, url, null);
+
+    assert.equal(res.status, 200);
+    const data = await res.json();
+    assert.equal(data.success, true);
+    assert.equal(data.dose.amount, '5.0mg');
+    assert.equal(data.dose.intervalDays, 14);
+    assert.equal(data.dose.date, '2026-09-19');
+    assert.equal(data.dose.timestamp, new Date('2026-09-19T21:00:00').getTime());
+    assert.ok(putBody);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('PATCH /api/records/:id updates fields and recomputes timestamp', async () => {
+  const originalFetch = globalThis.fetch;
+  const mockRecords = [
+    { id: 'wt-1', weight: 168.0, date: '2026-09-20', time: '08:00', timestamp: 1000 }
+  ];
+  const b64 = Buffer.from(JSON.stringify(mockRecords)).toString('base64');
+  let putBody = null;
+
+  globalThis.fetch = async (input, init) => {
+    const url = String(input);
+    if (url.includes('/contents/data/records.json')) {
+      if (init && init.method === 'PUT') {
+        putBody = JSON.parse(init.body);
+        return new Response(JSON.stringify({ content: { sha: 'sha-rec-2' } }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+      return new Response(JSON.stringify({ content: b64, sha: 'sha-rec-1' }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+    return new Response('Not found', { status: 404 });
+  };
+
+  try {
+    const req = new Request('https://tracker.test/api/records/wt-1', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ weight: 167.2, date: '2026-09-22', time: '08:30', condition: '早餐后' })
+    });
+    const env = { GITHUB_TOKEN: 'fake-token' };
+    const url = new URL(req.url);
+    const res = await handleRecordRoutes(req, env, url, null);
+
+    assert.equal(res.status, 200);
+    const data = await res.json();
+    assert.equal(data.success, true);
+    assert.equal(data.record.weight, 167.2);
+    assert.equal(data.record.condition, '早餐后');
+    assert.equal(data.record.timestamp, new Date('2026-09-22T08:30:00').getTime());
+    assert.ok(putBody);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});

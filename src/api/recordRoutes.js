@@ -167,16 +167,24 @@ export async function handleRecordRoutes(request, env, url, session) {
     }
 
     if (body.weight !== undefined) current.weight = parseFloat(body.weight);
-    if (body.date !== undefined) current.date = body.date;
-    if (body.time !== undefined) current.time = body.time;
-    if (body.condition !== undefined) current.condition = body.condition;
-    if (body.remark !== undefined) current.remark = body.remark;
-    current.updatedAt = new Date().toISOString();
+   if (body.date !== undefined) current.date = body.date;
+   if (body.time !== undefined) current.time = body.time;
+   if (body.condition !== undefined) current.condition = body.condition;
+   if (body.remark !== undefined) current.remark = body.remark;
 
-    records[index] = current;
-    await saveRecords(env, records, `Update record ${targetId}`);
+    if (body.date !== undefined || body.time !== undefined) {
+      const recordDate = new Date(`${current.date}T${current.time || '08:00'}:00`);
+      if (!isNaN(recordDate.getTime())) {
+        current.timestamp = recordDate.getTime();
+      }
+    }
+   current.updatedAt = new Date().toISOString();
 
-    return new Response(JSON.stringify({ success: true, record: current }), {
+   records[index] = current;
+    records.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+   await saveRecords(env, records, `Update record ${targetId}`);
+
+   return new Response(JSON.stringify({ success: true, record: current }), {
       headers: { 'Content-Type': 'application/json' }
     });
   }

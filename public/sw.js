@@ -1,5 +1,5 @@
 // Tirzepatide Tracker V2 PWA 的 Service Worker（仅缓存静态资源）
-const CACHE_NAME = 'tirz-tracker-v5.2';
+const CACHE_NAME = 'tirz-tracker-v6.0';
 const STATIC_ASSETS = [
   './',
   './index.html',
