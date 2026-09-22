@@ -138,12 +138,30 @@ export async function handleDoseRoutes(request, env, url, session) {
     }
 
     const targetId = delTargetId;
-    const { doses } = await getDoses(env);
-    const updated = doses.filter(d => d.id !== targetId);
-    await saveDoses(env, updated, `Delete dose ${targetId}`);
-    return new Response(JSON.stringify({ success: true, id: targetId }), {
-      headers: { 'Content-Type': 'application/json' }
-    });
+    try {
+      const { doses } = await getDoses(env);
+      const updated = doses.filter(d => d.id !== targetId);
+
+      // 删除请求必须落到 data/doses.json；目标已不存在时保持幂等，
+      // 这样客户端重试不会因为 404 把待同步队列卡住。
+      if (updated.length !== doses.length) {
+        await saveDoses(env, updated, `Delete dose ${targetId}`);
+      }
+
+      return new Response(JSON.stringify({
+        success: true,
+        id: targetId,
+        deleted: updated.length !== doses.length
+      }), {
+        headers: { 'Content-Type': 'application/json' }
+      });
+    } catch (err) {
+      console.error('GitHub delete dose error:', err);
+      return new Response(JSON.stringify({
+        error: 'STORAGE_DELETE_FAILED',
+        message: '删除针剂记录失败: ' + err.message
+      }), { status: 502, headers: { 'Content-Type': 'application/json' } });
+    }
   }
 
   return null;

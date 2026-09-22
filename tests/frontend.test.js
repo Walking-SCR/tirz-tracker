@@ -40,6 +40,8 @@ test('V6 interaction DOM IDs and structures are present', () => {
     'timelineViewport',
     'timelineNodesContainer',
     'timelineWeekText',
+    'timelineResetToday',
+    'timelineGestureHint',
     'btnTimelineSettings',
     'recordsListSection',
     'recordCountBadge',
@@ -50,6 +52,7 @@ test('V6 interaction DOM IDs and structures are present', () => {
     'btnCloseModal',
     'confirmImageCard',
     'confirmPhotoThumb',
+    'confirmPhotoPlaceholder',
     'btnChangeImageInConfirm',
     'confirmWeightInput',
     'confirmDateInput',
@@ -168,7 +171,19 @@ test('V6 interaction DOM IDs and structures are present', () => {
   assert.match(html, /onpointerdown/, 'Timeline should support pointer drag start');
   assert.match(html, /onpointermove/, 'Timeline should provide drag feedback');
   assert.match(html, /onpointerup/, 'Timeline should support pointer drag end');
+  assert.match(html, /timelineOffsetInitialized/, 'Timeline should initialize its window around today once');
+  assert.match(html, /state\.axis = Math\.abs\(dx\)/, 'Timeline should lock the gesture axis before dragging');
+  assert.match(html, /timelineSuppressClick/, 'Timeline drag should not accidentally activate a date node');
+  assert.match(html, /dataset\.timelineKey/, 'Timeline nodes should expose their local date key');
   assert.match(html, /timelineFirstDose/, 'Timeline should anchor to the first dose');
+  assert.match(html, /TIMELINE_DRAG_STEP_DAYS = 4/, 'Timeline should page four days per swipe');
+  assert.match(html, /pastBorder[\s\S]{0,240}83,106,132,0\.78/, 'Completed timeline circles should use the design 2px slate border');
+  assert.match(html, /border-2 border-\[rgba\(62,84,108,0\.78\)\]/, 'Future timeline circles should use the design 2px dark border');
+  assert.match(html, /weightOnThisDay/, 'Timeline should distinguish recorded past dates from empty past dates');
+  assert.match(html, /border-2 border-cyberPurple text-cyberPurple/, 'Next-dose node should use the solid purple design border');
+  assert.doesNotMatch(html, /border-2 border-dashed border-cyberPurple/, 'Next-dose node should not use a dashed border');
+  assert.match(html, /align-items:\s*center/, 'All app overlays should be vertically centered');
+  assert.match(html, /position:\s*sticky/, 'The top header should remain pinned while scrolling');
   assert.match(html, /\.hidden\s*\{\s*display:\s*none\s*!important;/, 'Critical hidden fallback CSS must not depend on Tailwind CDN');
   assert.match(html, /new URLSearchParams\(window\.location\.search\)/, 'Setup mode query should open the first-device flow');
   assert.match(html, /正在绑定/, 'Bootstrap action should show a visible pending state');

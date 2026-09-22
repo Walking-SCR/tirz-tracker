@@ -64,18 +64,29 @@
     body {
       background-color: #06111F;
       color: #F4F7FB;
-      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "PingFang SC", "Helvetica Neue", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
       user-select: none;
       min-height: 100dvh;
       padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 28px);
       margin: 0;
+      scroll-padding-top: 84px;
     }
 
     .app-header {
+      position: sticky;
+      top: 0;
+      z-index: 40;
       padding-top: max(18px, calc(env(safe-area-inset-top, 0px) + 14px));
-      padding-bottom: 18px;
-      background: transparent;
-      border-bottom: 0;
+      padding-bottom: 14px;
+      background: linear-gradient(180deg, rgba(6, 17, 31, 0.98) 0%, rgba(6, 17, 31, 0.9) 78%, rgba(6, 17, 31, 0) 100%);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border-bottom: 1px solid rgba(145, 166, 190, 0.08);
+    }
+
+    body .font-mono {
+      font-family: "SF Mono", "SFMono-Regular", Menlo, Monaco, Consolas, "PingFang SC", monospace;
+      letter-spacing: 0.01em;
     }
 
     .home-section-title {
@@ -91,8 +102,10 @@
     .timeline-viewport {
       overflow: hidden;
       touch-action: pan-y;
+      overscroll-behavior-x: contain;
       cursor: grab;
       user-select: none;
+      -webkit-user-select: none;
     }
 
     .timeline-viewport.is-dragging {
@@ -102,6 +115,41 @@
     .timeline-track {
       transition: transform 180ms ease-out;
       will-change: transform;
+    }
+
+    .timeline-track.is-dragging {
+      transition: none !important;
+    }
+
+    .timeline-reset-btn {
+      border: 1px solid rgba(39, 242, 195, 0.45);
+      color: #27F2C3;
+      background: rgba(39, 242, 195, 0.08);
+      border-radius: 999px;
+      padding: 0.25rem 0.6rem;
+      font-size: 0.7rem;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      transition: background 160ms ease, border-color 160ms ease;
+    }
+
+    .timeline-reset-btn:hover,
+    .timeline-reset-btn:focus-visible {
+      background: rgba(39, 242, 195, 0.18);
+      border-color: rgba(39, 242, 195, 0.85);
+      outline: none;
+    }
+
+    .timeline-hint {
+      min-height: 1rem;
+      text-align: center;
+      color: rgba(147, 164, 184, 0.86);
+      font-size: 0.7rem;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      transition: color 160ms ease;
+    }
+
+    .timeline-hint.is-active {
+      color: #27F2C3;
     }
 
     .glass-surface {
@@ -128,62 +176,38 @@
       -webkit-backdrop-filter: blur(10px);
       display: flex;
       justify-content: center;
-      align-items: flex-end;
-      padding: 0;
+      align-items: center;
+      padding: max(16px, calc(env(safe-area-inset-top, 0px) + 16px)) 16px max(16px, calc(env(safe-area-inset-bottom, 0px) + 16px));
       transition: opacity 0.2s ease-out;
     }
 
-    @media (min-width: 640px) {
-      .app-overlay {
-        align-items: center;
-        padding: 20px;
-      }
-    }
-
     .app-sheet {
-      width: 100%;
+      width: min(100%, 440px);
       max-width: 440px;
       background: #0B1A2A;
-      border-top: 1px solid rgba(145, 166, 190, 0.25);
-      border-top-left-radius: 20px;
-      border-top-right-radius: 20px;
-      max-height: calc(100dvh - env(safe-area-inset-top, 0px) - 24px);
+      border: 1px solid rgba(145, 166, 190, 0.25);
+      border-radius: 22px;
+      max-height: min(88dvh, 720px);
       display: flex;
       flex-direction: column;
       overflow: hidden;
-      box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.75);
-      padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 16px);
-      animation: sheetSlideUp 0.25s cubic-bezier(0.16, 1, 0.3, 1);
-    }
-
-    @media (min-width: 640px) {
-      .app-sheet {
-        border-radius: 20px;
-        border: 1px solid rgba(145, 166, 190, 0.25);
-        padding-bottom: 20px;
-        animation: sheetFadeIn 0.2s ease-out;
-      }
-    }
-
-    @keyframes sheetSlideUp {
-      from { transform: translateY(100%); }
-      to { transform: translateY(0); }
-    }
-
-    @keyframes sheetFadeIn {
-      from { opacity: 0; transform: scale(0.96); }
-      to { opacity: 1; transform: scale(1); }
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.78), 0 0 0 1px rgba(39, 242, 195, 0.04);
+      padding-bottom: 0;
+      animation: dialogPop 0.22s cubic-bezier(0.16, 1, 0.3, 1);
     }
 
     .app-sheet__body {
       overflow-y: auto;
       -webkit-overflow-scrolling: touch;
       padding: 16px 20px;
+      overscroll-behavior: contain;
     }
 
     .app-dialog {
       width: 90%;
       max-width: 340px;
+      max-height: min(88dvh, 600px);
+      overflow-y: auto;
       background: #0B1A2A;
       border: 1px solid rgba(145, 166, 190, 0.25);
       border-radius: 16px;
@@ -250,8 +274,10 @@
     <div class="max-w-md mx-auto flex items-center justify-between">
       <!-- 左侧：Sparkles 图标与主标题 -->
       <div class="flex items-center space-x-2.5 min-w-0">
-        <div class="w-11 h-11 rounded-2xl bg-gradient-to-tr from-cyberNeon/20 to-cyberCyan/15 border border-cyberNeon/40 flex-shrink-0 flex items-center justify-center text-cyberNeon shadow-[0_0_16px_rgba(39,242,195,0.25)]">
+        <div class="relative w-11 h-11 rounded-2xl bg-gradient-to-tr from-cyberNeon/20 to-cyberCyan/15 border border-cyberNeon/40 flex-shrink-0 flex items-center justify-center text-cyberNeon shadow-[0_0_16px_rgba(39,242,195,0.25)]">
           <i class="ph-bold ph-sparkle text-2xl"></i>
+          <i class="ph-fill ph-sparkle absolute top-1 right-1 text-[10px] text-cyberCyan"></i>
+          <i class="ph-fill ph-plus absolute bottom-2 right-1 text-[8px] text-cyberNeon"></i>
         </div>
         <div class="min-w-0">
           <h1 class="text-2xl font-black tracking-wider text-white leading-none">体重记录</h1>
@@ -334,7 +360,10 @@
           <span class="home-section-title font-bold text-white group-hover:text-cyberPurple transition">疗程时间轴</span>
           <i class="ph-bold ph-gear text-sm text-cyberTextDim group-hover:text-cyberPurple transition"></i>
         </div>
-        <span id="timelineWeekText" class="text-sm font-mono text-cyberTextDim">第 1 周 · 2026年9月</span>
+        <div class="flex items-center gap-2">
+          <span id="timelineWeekText" class="text-sm font-mono text-cyberTextDim" aria-live="polite">第 1 周 · 2026年9月</span>
+          <button id="timelineResetToday" type="button" class="timeline-reset-btn hidden" aria-label="回到今天">回到今天</button>
+        </div>
       </div>
 
       <!-- 7 节点水平时间轴容器 -->
@@ -345,6 +374,7 @@
           <!-- 由 JS 动态渲染 7 个节点 -->
         </div>
       </div>
+      <div id="timelineGestureHint" class="timeline-hint" aria-live="polite">左右滑动 4 天查看更多日期</div>
     </section>
 
     <!-- 06 记录明细：固定两行记录卡 -->
@@ -411,11 +441,11 @@
   <!-- ========================================================================= -->
 
   <!-- 03 更换图片·来源选择 Action Sheet -->
-  <div id="photoSourceSheet" class="app-overlay hidden" style="display:none!important;">
+  <div id="photoSourceSheet" class="app-overlay hidden">
     <div class="app-sheet">
       <div class="flex items-center justify-between px-5 pt-4 pb-3 border-b border-[rgba(145,166,190,0.18)]">
         <h3 class="text-sm font-bold text-white font-mono">选择图片来源</h3>
-        <button id="btnCloseSheet" class="w-7 h-7 rounded-lg bg-white/5 hover:bg-white/10 text-neutral-400 hover:text-white flex items-center justify-center">
+        <button id="btnCloseSheet" aria-label="关闭图片来源" class="w-7 h-7 rounded-lg bg-white/5 hover:bg-white/10 text-neutral-400 hover:text-white flex items-center justify-center">
           <i class="ph-bold ph-x text-sm"></i>
         </button>
       </div>
@@ -456,7 +486,11 @@
         <div id="confirmImageCard" class="flex items-center justify-between p-3 rounded-2xl bg-black/50 border border-[rgba(145,166,190,0.18)]">
           <div class="flex items-center gap-3">
             <div class="w-16 h-16 rounded-xl overflow-hidden bg-black/80 border border-cyberNeon/30 flex items-center justify-center flex-shrink-0 relative">
-              <img id="confirmPhotoThumb" src="" class="w-full h-full object-cover">
+              <img id="confirmPhotoThumb" src="" alt="秤面照片预览" class="hidden w-full h-full object-cover">
+              <div id="confirmPhotoPlaceholder" class="w-full h-full flex flex-col items-center justify-center text-cyberTextDim/70">
+                <i class="ph-bold ph-camera-plus text-xl"></i>
+                <span class="text-[9px] font-mono mt-0.5">可上传</span>
+              </div>
               <div id="confirmPhotoScanBeam" class="hidden absolute inset-0 pointer-events-none overflow-hidden">
                 <div class="laser-line"></div>
               </div>
@@ -607,7 +641,7 @@
     <div class="app-sheet">
       <div class="flex items-center justify-between px-5 pt-4 pb-3 border-b border-[rgba(145,166,190,0.18)]">
         <h3 id="doseModalTitle" class="text-sm font-bold text-white font-mono">首次记录给药</h3>
-        <button id="btnCloseDoseModal" class="w-7 h-7 rounded-lg bg-white/5 hover:bg-white/10 text-neutral-400 hover:text-white flex items-center justify-center">
+        <button id="btnCloseDoseModal" aria-label="关闭给药记录" class="w-7 h-7 rounded-lg bg-white/5 hover:bg-white/10 text-neutral-400 hover:text-white flex items-center justify-center">
           <i class="ph-bold ph-x text-sm"></i>
         </button>
       </div>
@@ -751,7 +785,7 @@
     <div class="app-sheet">
       <div class="flex items-center justify-between px-5 pt-4 pb-3 border-b border-[rgba(145,166,190,0.18)]">
         <h3 class="text-sm font-bold text-white font-mono">给药记录详情</h3>
-        <button id="btnCloseDoseDetailModal" class="w-7 h-7 rounded-lg bg-white/5 hover:bg-white/10 text-neutral-400 hover:text-white flex items-center justify-center">
+        <button id="btnCloseDoseDetailModal" aria-label="关闭给药详情" class="w-7 h-7 rounded-lg bg-white/5 hover:bg-white/10 text-neutral-400 hover:text-white flex items-center justify-center">
           <i class="ph-bold ph-x text-sm"></i>
         </button>
       </div>
@@ -820,7 +854,7 @@
     <div class="app-sheet">
       <div class="flex items-center justify-between px-5 pt-4 pb-3 border-b border-[rgba(145,166,190,0.18)]">
         <h3 class="text-sm font-bold text-white font-mono">账号与同步</h3>
-        <button id="btnCloseSessionInfoModal" class="w-7 h-7 rounded-lg bg-white/5 hover:bg-white/10 text-neutral-400 hover:text-white flex items-center justify-center">
+        <button id="btnCloseSessionInfoModal" aria-label="关闭账号与同步" class="w-7 h-7 rounded-lg bg-white/5 hover:bg-white/10 text-neutral-400 hover:text-white flex items-center justify-center">
           <i class="ph-bold ph-x text-sm"></i>
         </button>
       </div>
@@ -908,7 +942,7 @@
       <!-- 顶部标题与关闭 -->
       <div class="flex items-center justify-between z-10 pt-2 px-1">
         <span id="photoViewerTitle" class="text-xs font-mono text-white truncate max-w-[280px]">秤面照片凭证</span>
-        <button id="closePhotoViewerModal" class="w-8 h-8 rounded-full bg-white/10 text-white flex items-center justify-center active:scale-95 transition">
+        <button id="closePhotoViewerModal" aria-label="关闭照片查看器" class="w-8 h-8 rounded-full bg-white/10 text-white flex items-center justify-center active:scale-95 transition">
           <i class="ph-bold ph-x text-sm"></i>
         </button>
       </div>
@@ -947,7 +981,7 @@
             <p class="text-[10px] text-cyberTextDim font-mono">180天免密受信任设备</p>
           </div>
         </div>
-        <button id="btnCloseAuthModal" class="w-7 h-7 rounded-lg bg-white/5 text-neutral-400 hover:text-white flex items-center justify-center">
+        <button id="btnCloseAuthModal" aria-label="关闭登录验证" class="w-7 h-7 rounded-lg bg-white/5 text-neutral-400 hover:text-white flex items-center justify-center">
           <i class="ph-bold ph-x text-xs"></i>
         </button>
       </div>
@@ -986,7 +1020,7 @@
             <p class="text-[10px] text-cyberTextDim font-mono">绑定后享受 180 天免密信任</p>
           </div>
         </div>
-        <button id="btnCloseSetupModal" class="w-7 h-7 rounded-lg bg-white/5 text-neutral-400 hover:text-white flex items-center justify-center">
+        <button id="btnCloseSetupModal" aria-label="关闭设备绑定" class="w-7 h-7 rounded-lg bg-white/5 text-neutral-400 hover:text-white flex items-center justify-center">
           <i class="ph-bold ph-x text-sm"></i>
         </button>
       </div>
@@ -1281,7 +1315,7 @@
       },
 
       async deleteDose(id) {
-        const res = await fetch(`${API_BASE}/api/doses/${id}`, {
+        const res = await fetch(`${API_BASE}/api/doses/${encodeURIComponent(id)}`, {
           method: 'DELETE',
           headers: this.getCustomHeaders(),
           credentials: 'include'
@@ -1331,9 +1365,26 @@
       } catch (e) {}
     }
 
+    // 给药删除也需要本地待同步队列，避免删除后下一次云端读取把“第3针”重新拉回来。
+    function getPendingDoseDeletions() {
+      try {
+        return JSON.parse(localStorage.getItem('tirz_pending_dose_deletions') || '[]');
+      } catch (e) {
+        return [];
+      }
+    }
+    function savePendingDoseDeletions(list) {
+      try {
+        localStorage.setItem('tirz_pending_dose_deletions', JSON.stringify(list));
+      } catch (e) {}
+    }
+
     let timelineWindowOffsetDays = 0;
+    let timelineOffsetInitialized = false;
+    let timelineInitialFirstDoseKey = null;
     let timelineDragState = null;
     let timelineSuppressClick = false;
+    let timelineAnimationTimer = null;
 
     // 当前弹层与草稿状态
     let activeWeightModalMode = 'create'; // 'create' | 'edit'
@@ -1556,12 +1607,23 @@
         }
 
         if (Array.isArray(cloudDoses)) {
-          doseRecords = [...cloudDoses].sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+          const pendingDoseDels = getPendingDoseDeletions();
+          doseRecords = [...cloudDoses]
+            .filter(d => !pendingDoseDels.includes(d.id))
+            .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
           if (doseRecords.length > 0 && doseRecords[0].intervalDays) {
             treatmentSchedule.intervalDays = doseRecords[0].intervalDays;
             saveScheduleToStorage();
           }
           saveDosesToStorage();
+
+          // 重试此前因网络/认证失败的给药删除；成功后再移出队列。
+          for (const delId of pendingDoseDels) {
+            CloudStorageAdapter.deleteDose(delId).then(() => {
+              const updated = getPendingDoseDeletions().filter(x => x !== delId);
+              savePendingDoseDeletions(updated);
+            }).catch(e => console.warn('Retry pending dose delete error:', e));
+          }
         }
 
         syncState.status = 'synced';
@@ -1826,6 +1888,7 @@
     // 渲染层 3：疗程时间轴（首针起点 + 7 天窗口 + 左右拖动）
     // =========================================================================
     const TIMELINE_WINDOW_DAYS = 7;
+    const TIMELINE_DRAG_STEP_DAYS = 4;
     const DAY_MS = 24 * 60 * 60 * 1000;
 
     function timelineDateKey(date) {
@@ -1849,26 +1912,46 @@
       return Math.round((timelineDateFromKey(toKey).getTime() - timelineDateFromKey(fromKey).getTime()) / DAY_MS);
     }
 
+    function timelineNormalizeKey(value, fallback) {
+      if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+      return timelineDateKey(value || fallback);
+    }
+
+    function getTimelineWindowInfo(now = new Date()) {
+      const todayKey = timelineDateKey(now);
+      const firstDose = timelineFirstDose();
+      const firstDoseKey = firstDose
+        ? timelineNormalizeKey(firstDose.date, firstDose.timestamp || now)
+        : todayKey;
+      const daysToToday = Math.max(0, timelineDaysBetween(firstDoseKey, todayKey));
+      // 首针是硬边界；在今天之后保留两周浏览空间，避免滑到“无穷未来”。
+      const maxOffsetDays = firstDose ? daysToToday + 14 : 0;
+      const todayWindowOffset = Math.max(0, Math.min(maxOffsetDays, daysToToday - 3));
+      // 首次本地渲染可能还没有云端给药数据；云端数据到达后重新锚定到今天，
+      // 避免用户被带回首针日期。用户已经开始拖动后则保留其浏览位置。
+      if (!timelineOffsetInitialized || (timelineInitialFirstDoseKey === null && firstDose)) {
+        timelineWindowOffsetDays = todayWindowOffset;
+        timelineOffsetInitialized = true;
+      }
+      timelineInitialFirstDoseKey = firstDose ? firstDoseKey : null;
+      timelineWindowOffsetDays = Math.max(0, Math.min(maxOffsetDays, timelineWindowOffsetDays));
+      return { todayKey, firstDose, firstDoseKey, daysToToday, maxOffsetDays, todayWindowOffset };
+    }
+
     function renderTreatmentTimeline() {
       const container = document.getElementById('timelineNodesContainer');
       const weekText = document.getElementById('timelineWeekText');
       if (!container) return;
 
-      const now = new Date();
-      const todayDateStr = timelineDateKey(now);
-      const firstDose = timelineFirstDose();
-      const firstDoseKey = firstDose ? (firstDose.date || timelineDateKey(firstDose.timestamp || now)) : todayDateStr;
+      const info = getTimelineWindowInfo();
+      const { todayKey, firstDose, firstDoseKey, maxOffsetDays, todayWindowOffset } = info;
       const latestDose = [...doseRecords].sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0))[0] || null;
       const intervalDays = (latestDose && latestDose.intervalDays) ? latestDose.intervalDays : treatmentSchedule.intervalDays;
       const latestDoseTimestamp = latestDose
-        ? (latestDose.timestamp || timelineDateFromKey(latestDose.date || todayDateStr).getTime())
+        ? (latestDose.timestamp || timelineDateFromKey(latestDose.date || todayKey).getTime())
         : null;
       const nextDoseTimestamp = latestDoseTimestamp ? latestDoseTimestamp + intervalDays * DAY_MS : null;
       const nextDoseDateStr = nextDoseTimestamp ? timelineDateKey(nextDoseTimestamp) : '';
-
-      // 首针是左边界，今天之后再预留一个窗口，方便查看下一次给药。
-      const maxOffsetDays = Math.max(0, timelineDaysBetween(firstDoseKey, todayDateStr) + TIMELINE_WINDOW_DAYS);
-      timelineWindowOffsetDays = Math.min(Math.max(0, timelineWindowOffsetDays), maxOffsetDays);
       const windowStart = timelineDateFromKey(firstDoseKey);
       windowStart.setDate(windowStart.getDate() + timelineWindowOffsetDays);
 
@@ -1878,6 +1961,8 @@
           ? `第 ${weekNumber} 周 · ${windowStart.getFullYear()}年${windowStart.getMonth() + 1}月`
           : '尚未开始 · 首针后显示';
       }
+      const resetButton = document.getElementById('timelineResetToday');
+      if (resetButton) resetButton.classList.toggle('hidden', timelineWindowOffsetDays === todayWindowOffset);
 
       const scheduleCycleDisplay = document.getElementById('scheduleCycleDisplay');
       const scheduleAmountDisplay = document.getElementById('scheduleAmountDisplay');
@@ -1890,6 +1975,8 @@
 
       const weekNames = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
       container.innerHTML = '';
+      container.style.transition = '';
+      container.style.transform = '';
 
       for (let i = 0; i < TIMELINE_WINDOW_DAYS; i++) {
         const d = new Date(windowStart);
@@ -1897,107 +1984,192 @@
         const dStr = timelineDateKey(d);
         const dayLabel = `${d.getMonth() + 1}/${d.getDate()}`;
         const wName = weekNames[d.getDay()];
-        const isToday = dStr === todayDateStr;
-        const isPast = dStr < todayDateStr;
-        const doseOnThisDay = doseRecords.find(dose => dose.date === dStr);
+        const isToday = dStr === todayKey;
+        const isPast = dStr < todayKey;
+        const doseOnThisDay = doseRecords.find(dose => timelineNormalizeKey(dose.date, dose.timestamp) === dStr);
+        const weightOnThisDay = weightRecords.find(record => timelineNormalizeKey(record.date, record.timestamp) === dStr);
         const isNextDoseDay = dStr === nextDoseDateStr;
         const node = document.createElement('div');
+        node.dataset.timelineKey = dStr;
         node.className = 'flex flex-col items-center cursor-pointer select-none group min-w-0';
+        const openNode = (handler) => {
+          node.onclick = () => {
+            if (timelineSuppressClick) { timelineSuppressClick = false; return; }
+            handler();
+          };
+        };
 
         let circleHtml = '';
         let labelHtml = '';
         if (doseOnThisDay) {
-          circleHtml = `<div class="w-10 h-10 rounded-full bg-cyberPurple text-[#0B1A2A] flex items-center justify-center shadow-[0_0_15px_rgba(168,139,255,0.75)] active:scale-95 transition">
-            <svg class="w-4 h-4 fill-current text-[#06111F]" viewBox="0 0 256 256"><path d="M213.66,82.34l-40-40a8,8,0,0,0-11.32,0l-16,16L128,40,112,56l18.34,18.34L69.66,135l-16-16L37.66,135l40,40L33.66,219a8,8,0,0,0,11.32,11.32l44-44,40,40,16-16-16-16,60.68-60.68L208,168l16-16-18.34-18.34,16-16A8,8,0,0,0,213.66,82.34ZM136,128,104,96l42.34-42.34,32,32Z"/></svg>
-          </div>`;
+          circleHtml = `<div class="w-10 h-10 rounded-full bg-cyberPurple text-[#0B1A2A] flex items-center justify-center shadow-[0_0_15px_rgba(168,139,255,0.75)] active:scale-95 transition"><i class="ph-bold ph-syringe text-lg text-[#06111F]"></i></div>`;
           labelHtml = `<span class="text-xs font-mono font-bold text-cyberPurple mt-1.5 truncate max-w-full">${doseOnThisDay.seq || '给药'}</span><span class="text-[11px] font-mono text-cyberTextDim">${wName}</span>`;
-          node.onclick = () => { if (timelineSuppressClick) { timelineSuppressClick = false; return; } openDoseDetail(doseOnThisDay.id); };
+          openNode(() => openDoseDetail(doseOnThisDay.id));
         } else if (isToday) {
-          circleHtml = `<div class="w-10 h-10 rounded-full bg-[#0B1A2A] border-2 border-cyberNeon flex items-center justify-center shadow-[0_0_14px_rgba(39,242,195,0.8)] active:scale-95 transition">
-            <div class="w-3 h-3 rounded-full bg-cyberNeon shadow-[0_0_8px_#27F2C3]"></div>
-          </div>`;
+          circleHtml = `<div class="w-10 h-10 rounded-full bg-[#0B1A2A] border-2 border-cyberNeon flex items-center justify-center shadow-[0_0_14px_rgba(39,242,195,0.8)] active:scale-95 transition"><div class="w-3 h-3 rounded-full bg-cyberNeon shadow-[0_0_8px_#27F2C3]"></div></div>`;
           labelHtml = `<span class="text-xs font-mono font-bold px-2 py-0.5 rounded-full bg-cyberNeon text-[#06111F] mt-1.5 shadow-sm">今天</span><span class="text-[11px] font-mono text-cyberTextDim mt-0.5">${wName}</span>`;
-          node.onclick = () => { if (timelineSuppressClick) { timelineSuppressClick = false; return; } openDoseModal(); };
+          openNode(() => openDoseModal());
         } else if (isNextDoseDay) {
-          circleHtml = `<div class="w-10 h-10 rounded-full bg-[#0B1A2A] border-2 border-dashed border-cyberPurple text-cyberPurple flex items-center justify-center active:scale-95 transition">
-            <svg class="w-4 h-4 fill-current text-cyberPurple" viewBox="0 0 256 256"><path d="M213.66,82.34l-40-40a8,8,0,0,0-11.32,0l-16,16L128,40,112,56l18.34,18.34L69.66,135l-16-16L37.66,135l40,40L33.66,219a8,8,0,0,0,11.32,11.32l44-44,40,40,16-16-16-16,60.68-60.68L208,168l16-16-18.34-18.34,16-16A8,8,0,0,0,213.66,82.34ZM136,128,104,96l42.34-42.34,32,32Z"/></svg>
-          </div>`;
+          // 设计稿的“下次给药”是实线紫色环，不是虚线；尺寸与今天/已完成节点一致。
+          circleHtml = `<div class="w-10 h-10 rounded-full bg-[#0B1A2A] border-2 border-cyberPurple text-cyberPurple flex items-center justify-center shadow-[0_0_12px_rgba(168,139,255,0.42)] active:scale-95 transition"><i class="ph-bold ph-syringe text-lg"></i></div>`;
           labelHtml = `<span class="text-xs font-mono font-bold text-cyberPurple mt-1.5">下次给药</span><span class="text-[11px] font-mono text-cyberTextDim">${wName}</span>`;
-          node.onclick = () => { if (timelineSuppressClick) { timelineSuppressClick = false; return; } openDoseModal(); };
+          openNode(() => openDoseModal());
         } else if (isPast) {
-          circleHtml = `<div class="w-10 h-10 rounded-full bg-white/5 border border-[rgba(145,166,190,0.25)] flex items-center justify-center shadow-sm">
-            <svg class="w-4 h-4 text-cyberNeon" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
-          </div>`;
+          // 有体重记录的日期使用设计稿中的霓虹青边框；只有时间经过但没有
+          // 体重记录的日期使用 slate 边框，分别对应设计稿的 9/20、9/21 与 9/18。
+          const pastBorder = weightOnThisDay
+            ? 'border-cyberNeon shadow-[0_0_12px_rgba(39,242,195,0.42)]'
+            : 'border-[rgba(83,106,132,0.78)] shadow-[0_0_0_1px_rgba(6,17,31,0.55)]';
+          const pastCheck = weightOnThisDay ? 'text-cyberNeon' : 'text-[rgba(111,139,168,0.95)]';
+          circleHtml = `<div class="w-10 h-10 rounded-full bg-[#0B1A2A] border-2 ${pastBorder} flex items-center justify-center active:scale-95 transition"><i class="ph-bold ph-check text-lg ${pastCheck}"></i></div>`;
           labelHtml = `<span class="text-[11px] font-mono text-cyberTextDim mt-1.5">${wName}</span>`;
-          node.onclick = () => { if (timelineSuppressClick) { timelineSuppressClick = false; return; } openDoseModal(); };
+          openNode(() => openDoseModal());
         } else {
-          circleHtml = `<div class="w-10 h-10 rounded-full bg-black/40 border border-[rgba(145,166,190,0.22)] flex items-center justify-center">
-            <div class="w-2 h-2 rounded-full bg-[rgba(145,166,190,0.4)]"></div>
-          </div>`;
+          circleHtml = `<div class="w-10 h-10 rounded-full bg-[#081522] border-2 border-[rgba(62,84,108,0.78)] flex items-center justify-center shadow-[0_0_0_1px_rgba(6,17,31,0.55)]"><div class="w-2 h-2 rounded-full bg-[rgba(109,133,159,0.5)]"></div></div>`;
           labelHtml = `<span class="text-[11px] font-mono text-cyberTextDim mt-1.5">${wName}</span>`;
-          node.onclick = () => { if (timelineSuppressClick) { timelineSuppressClick = false; return; } openDoseModal(); };
+          openNode(() => openDoseModal());
         }
-
         node.innerHTML = `<span class="text-xs font-mono text-cyberTextDim mb-1">${dayLabel}</span>${circleHtml}${labelHtml}`;
         container.appendChild(node);
       }
-
       bindTimelineDrag();
     }
 
     function bindTimelineDrag() {
       const viewport = document.getElementById('timelineViewport');
-      if (!viewport) return;
-      const startDrag = (event) => {
-        if (timelineDragState) return;
-        timelineDragState = { startX: event.clientX, pointerId: event.pointerId };
-        timelineSuppressClick = false;
-        viewport.classList.add('is-dragging');
-        if (event.pointerId !== undefined) viewport.setPointerCapture?.(event.pointerId);
+      if (!viewport || viewport.dataset.timelineBound === 'true') return;
+      viewport.dataset.timelineBound = 'true';
+      const hint = document.getElementById('timelineGestureHint');
+      const resetButton = document.getElementById('timelineResetToday');
+      const getTrack = () => document.getElementById('timelineNodesContainer');
+      const setHint = (text, active = false) => {
+        if (!hint) return;
+        hint.textContent = text;
+        hint.classList.toggle('is-active', active);
       };
-      const moveDrag = (event) => {
-        if (!timelineDragState) return;
-        const container = document.getElementById('timelineNodesContainer');
-        if (container) {
-          container.style.transition = 'none';
-          container.style.transform = `translateX(${event.clientX - timelineDragState.startX}px)`;
-        }
+      const previewDate = (offset) => {
+        const info = getTimelineWindowInfo();
+        const date = timelineDateFromKey(info.firstDoseKey);
+        date.setDate(date.getDate() + offset + 3);
+        return `${date.getMonth() + 1}/${date.getDate()} · ${['周日', '周一', '周二', '周三', '周四', '周五', '周六'][date.getDay()]}`;
       };
-      const endDrag = (event) => {
-        if (!timelineDragState) return;
-        const deltaX = event.clientX - timelineDragState.startX;
-        const direction = Math.abs(deltaX) >= 36 ? (deltaX < 0 ? 1 : -1) : 0;
-        timelineSuppressClick = direction !== 0;
-        timelineDragState = null;
+      const clearVisualDrag = () => {
         viewport.classList.remove('is-dragging');
-        const container = document.getElementById('timelineNodesContainer');
-        if (container) {
-          container.style.transition = '';
-          container.style.transform = '';
-        }
-        if (direction) {
-          timelineWindowOffsetDays += direction;
-          renderTreatmentTimeline();
+        const track = getTrack();
+        if (track) {
+          track.classList.remove('is-dragging');
+          track.style.transition = '';
+          track.style.transform = '';
         }
       };
       const cancelDrag = () => {
+        if (!timelineDragState) return;
         timelineDragState = null;
-        viewport.classList.remove('is-dragging');
-        const container = document.getElementById('timelineNodesContainer');
-        if (container) {
-          container.style.transition = '';
-          container.style.transform = '';
-        }
+        clearVisualDrag();
+        setHint('左右滑动 4 天查看更多日期');
       };
-      // Pointer Events 是 iPhone 主路径，鼠标事件作为桌面浏览器与旧 WebView 回退。
+      const startDrag = (event) => {
+        if (event.pointerType === 'mouse' && event.button !== 0) return;
+        if (timelineDragState) return;
+        timelineDragState = {
+          startX: event.clientX,
+          startY: event.clientY,
+          lastX: event.clientX,
+          lastY: event.clientY,
+          pointerId: event.pointerId,
+          axis: null,
+          dragging: false
+        };
+        timelineSuppressClick = false;
+      };
+      const moveDrag = (event) => {
+        const state = timelineDragState;
+        if (!state) return;
+        state.lastX = event.clientX;
+        state.lastY = event.clientY;
+        const dx = event.clientX - state.startX;
+        const dy = event.clientY - state.startY;
+        if (!state.axis && Math.max(Math.abs(dx), Math.abs(dy)) >= 8) {
+          state.axis = Math.abs(dx) > Math.abs(dy) * 1.15 ? 'horizontal' : 'vertical';
+          if (state.axis === 'vertical') {
+            timelineDragState = null;
+            return;
+          }
+          state.dragging = true;
+          viewport.classList.add('is-dragging');
+          const track = getTrack();
+          if (track) track.classList.add('is-dragging');
+          if (state.pointerId !== undefined) viewport.setPointerCapture?.(state.pointerId);
+        }
+        if (state.axis !== 'horizontal') return;
+        event.preventDefault();
+        const track = getTrack();
+        if (track) {
+          track.style.transition = 'none';
+          track.style.transform = `translateX(${dx}px)`;
+        }
+        const width = viewport.clientWidth || 320;
+        const perDay = width / TIMELINE_WINDOW_DAYS;
+        const previewOffset = Math.max(0, Math.min(getTimelineWindowInfo().maxOffsetDays, timelineWindowOffsetDays + Math.round(-dx / perDay)));
+        setHint(`拖动到 ${previewDate(previewOffset)}`, true);
+      };
+      const endDrag = (event) => {
+        const state = timelineDragState;
+        if (!state) return;
+        timelineDragState = null;
+        if (state.axis !== 'horizontal') {
+          clearVisualDrag();
+          return;
+        }
+        const x = Number.isFinite(event.clientX) ? event.clientX : state.lastX;
+        const deltaX = x - state.startX;
+        const width = viewport.clientWidth || 320;
+        const perDay = width / TIMELINE_WINDOW_DAYS;
+        const threshold = Math.max(24, perDay * 0.24);
+        const shouldPage = Math.abs(deltaX) >= threshold;
+        const info = getTimelineWindowInfo();
+        const direction = deltaX < 0 ? 1 : -1;
+        const target = Math.max(0, Math.min(info.maxOffsetDays, timelineWindowOffsetDays + (shouldPage ? direction * TIMELINE_DRAG_STEP_DAYS : 0)));
+        const steps = Math.abs(target - timelineWindowOffsetDays);
+        timelineSuppressClick = state.dragging;
+        clearVisualDrag();
+        if (timelineAnimationTimer) clearTimeout(timelineAnimationTimer);
+        const track = getTrack();
+        if (steps === 0) {
+          if (track) {
+            track.style.transition = 'transform 160ms ease-out';
+            track.style.transform = `translateX(${deltaX * 0.2}px)`;
+          }
+          setHint(direction > 0 ? '已到可浏览的最近日期' : '已到首针，不能继续向前');
+          timelineAnimationTimer = window.setTimeout(() => { clearVisualDrag(); }, 170);
+        } else {
+          if (track) {
+            track.style.transition = 'transform 180ms ease-out';
+            track.style.transform = `translateX(${(direction > 0 ? -steps : steps) * perDay}px)`;
+          }
+          timelineAnimationTimer = window.setTimeout(() => {
+            timelineWindowOffsetDays = target;
+            renderTreatmentTimeline();
+            setHint('左右滑动 4 天查看更多日期');
+          }, 185);
+        }
+        window.setTimeout(() => { timelineSuppressClick = false; }, 450);
+      };
+
       viewport.onpointerdown = startDrag;
       viewport.onpointermove = moveDrag;
       viewport.onpointerup = endDrag;
       viewport.onpointercancel = cancelDrag;
-      viewport.onmousedown = startDrag;
-      viewport.onmousemove = moveDrag;
-      viewport.onmouseup = endDrag;
-      viewport.onmouseleave = cancelDrag;
+      viewport.onlostpointercapture = (event) => {
+        if (timelineDragState && timelineDragState.axis === 'horizontal') endDrag(event);
+      };
+      if (resetButton) resetButton.onclick = () => {
+        const info = getTimelineWindowInfo();
+        timelineWindowOffsetDays = info.todayWindowOffset;
+        renderTreatmentTimeline();
+        setHint('已回到今天');
+        window.setTimeout(() => setHint('左右滑动 4 天查看更多日期'), 900);
+      };
     }
 
     function formatDateDetailed(ts) {
@@ -2232,24 +2404,36 @@
       if (sheet) sheet.classList.add('hidden');
     }
 
+    // 统一的图片选择入口：确认弹窗、异常态和首页按钮共用，避免局部事件作用域导致
+    // “上传图片”点击后出现 triggerNativeFilePicker 未定义。
+    function triggerNativeFilePicker() {
+      const input = document.getElementById('scaleFileInput') || document.getElementById('scaleCameraInput');
+      if (input) input.click();
+    }
+
     // =========================================================================
     // 弹层控制器：称重记录弹层 (新增/编辑/识别/更换图片/异常恢复)
     // =========================================================================
     function openWeightModal({ mode = 'create', record = null, source = 'manual' } = {}) {
       activeWeightModalMode = mode;
       editingRecordId = record ? record.id : null;
+      // 每次打开都从干净的图片草稿开始；用户在弹窗内选择新图后再写入。
+      currentParsedImageBase64 = '';
 
       const modal = document.getElementById('confirmModal');
       const title = document.getElementById('confirmModalTitle');
       const saveBtn = document.getElementById('btnSaveConfirm');
       const imageCard = document.getElementById('confirmImageCard');
       const thumb = document.getElementById('confirmPhotoThumb');
+      const photoPlaceholder = document.getElementById('confirmPhotoPlaceholder');
       const weightInput = document.getElementById('confirmWeightInput');
       const dateInput = document.getElementById('confirmDateInput');
       const timeInput = document.getElementById('confirmTimeInput');
       const remarkInput = document.getElementById('confirmRemarkInput');
       const remarkCount = document.getElementById('confirmRemarkCount');
       const confidence = document.getElementById('aiDetectConfidence');
+      const photoStatus = document.getElementById('confirmPhotoStatusText');
+      const changeImageBtn = document.getElementById('btnChangeImageInConfirm');
 
       // 重置所有错误状态
       hideConfirmInModalErrors();
@@ -2277,10 +2461,23 @@
         const photoSource = record.photo || record.photoPath;
         if (photoSource) {
           const resolved = CloudStorageAdapter.resolvePhotoUrl(photoSource);
-          if (thumb) thumb.src = resolved;
+          if (thumb) {
+            thumb.src = resolved;
+            thumb.classList.remove('hidden');
+          }
+          if (photoPlaceholder) photoPlaceholder.classList.add('hidden');
           if (imageCard) imageCard.classList.remove('hidden');
+          if (photoStatus) photoStatus.textContent = '已载入凭证，可更换';
+          if (changeImageBtn) changeImageBtn.textContent = '更换图片';
         } else {
-          if (imageCard) imageCard.classList.add('hidden');
+          if (thumb) {
+            thumb.removeAttribute('src');
+            thumb.classList.add('hidden');
+          }
+          if (photoPlaceholder) photoPlaceholder.classList.remove('hidden');
+          if (imageCard) imageCard.classList.remove('hidden');
+          if (photoStatus) photoStatus.textContent = '可选：上传秤面照片';
+          if (changeImageBtn) changeImageBtn.textContent = '上传图片';
         }
 
         if (confidence) confidence.textContent = '记录已校验';
@@ -2294,8 +2491,14 @@
             weightInput.placeholder = '0.0';
             setTimeout(() => weightInput.focus(), 200);
           }
-          if (imageCard) imageCard.classList.add('hidden');
-          currentParsedImageBase64 = '';
+          if (imageCard) imageCard.classList.remove('hidden');
+          if (thumb) {
+            thumb.removeAttribute('src');
+            thumb.classList.add('hidden');
+          }
+          if (photoPlaceholder) photoPlaceholder.classList.remove('hidden');
+          if (photoStatus) photoStatus.textContent = '可选：上传秤面照片';
+          if (changeImageBtn) changeImageBtn.textContent = '上传图片';
           if (confidence) confidence.textContent = '手动补录模式';
         }
 
@@ -2552,11 +2755,16 @@
       // 显示图片卡片与即时缩略图
       const imageCard = document.getElementById('confirmImageCard');
       const thumb = document.getElementById('confirmPhotoThumb');
+      const photoPlaceholder = document.getElementById('confirmPhotoPlaceholder');
       const beam = document.getElementById('confirmPhotoScanBeam');
 
       if (imageCard) imageCard.classList.remove('hidden');
       const objectUrl = URL.createObjectURL(file);
-      if (thumb) thumb.src = objectUrl;
+      if (thumb) {
+        thumb.src = objectUrl;
+        thumb.classList.remove('hidden');
+      }
+      if (photoPlaceholder) photoPlaceholder.classList.add('hidden');
       if (beam) beam.classList.remove('hidden');
 
       // 打开或保持 confirmModal 打开
@@ -3046,14 +3254,26 @@
           message: '删除后将从时间轴移除，并重新计算下次给药时间。',
           onConfirm: async () => {
             closeDoseDetail();
+
+            const shouldSyncDoseDelete = !!API_BASE && !CloudStorageAdapter.sessionState.isLocalDemo;
+            if (shouldSyncDoseDelete) {
+              const pending = getPendingDoseDeletions();
+              if (!pending.includes(id)) {
+                pending.push(id);
+                savePendingDoseDeletions(pending);
+              }
+            }
+
             doseRecords = doseRecords.filter(d => d.id !== id);
             saveDosesToStorage();
             refreshAllUI();
             showToast('给药记录已删除');
 
-            if (CloudStorageAdapter.isAuthenticated()) {
+            if (shouldSyncDoseDelete) {
               try {
                 await CloudStorageAdapter.deleteDose(id);
+                savePendingDoseDeletions(getPendingDoseDeletions().filter(x => x !== id));
+                showToast('已同步从私有数据仓库删除');
               } catch (err) {
                 console.warn('Cloud delete dose error:', err);
                 showToast('本地已删除，云端待重试', 'error');
@@ -3225,11 +3445,6 @@
       const btnRecordToday = document.getElementById('btnRecordToday');
       const btnEmptyRecordToday = document.getElementById('btnEmptyRecordToday');
       const scaleFileInput = document.getElementById('scaleFileInput') || document.getElementById('scaleCameraInput');
-
-      function triggerNativeFilePicker() {
-        const input = document.getElementById('scaleFileInput') || document.getElementById('scaleCameraInput');
-        if (input) input.click();
-      }
 
       if (btnRecordToday) btnRecordToday.onclick = triggerNativeFilePicker;
       if (btnEmptyRecordToday) btnEmptyRecordToday.onclick = triggerNativeFilePicker;

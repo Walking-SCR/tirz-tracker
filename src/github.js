@@ -181,8 +181,12 @@ export async function getDoses(env) {
     try {
       const jsonStr = base64ToUtf8(file.content);
       const parsed = JSON.parse(jsonStr);
-      const doses = Array.isArray(parsed) ? parsed : (parsed.doses || []);
-      if (doses.length > 0) {
+      // 空数组也是有效的云端状态。不能把“已全部删除”的 doses.json
+      // 当成不存在，否则读取时会回退到 records.json，把已删除的针剂复活。
+      const doses = Array.isArray(parsed)
+        ? parsed
+        : (parsed && Array.isArray(parsed.doses) ? parsed.doses : null);
+      if (doses) {
         return { doses, sha: file.sha };
       }
     } catch (err) {
