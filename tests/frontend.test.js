@@ -140,6 +140,7 @@ test('V6 interaction DOM IDs and structures are present', () => {
     'ghTokenStatusBadge',
     'geminiKeyStatusBadge',
     'sessionLastSyncTime',
+    'btnToggleTimelineVisibility',
     'inputUserGithubToken',
     'btnSaveGithubToken',
     'btnRefreshData',
@@ -175,6 +176,10 @@ test('V6 interaction DOM IDs and structures are present', () => {
   assert.match(html, /addEventListener\('touchmove'/, 'Timeline should handle horizontal touch movement');
   assert.match(html, /touch-action: none/, 'Timeline should lock the gesture after horizontal dragging starts');
   assert.match(html, /timelineDebugEnabled/, 'Timeline should expose opt-in debug logging');
+  assert.match(html, /STORAGE_KEY_TIMELINE_VISIBILITY = 'tirz_timeline_visible_v1'/, 'Timeline visibility should have a durable preference key');
+  assert.match(html, /localStorage\.setItem\(STORAGE_KEY_TIMELINE_VISIBILITY, String\(nextVisibility\)\)/, 'Toggle changes should persist across reloads');
+  assert.match(html, /section\.classList\.toggle\('hidden', !timelineIsVisible\)/, 'Turning the preference off should hide the entire timeline section');
+  assert.match(html, /role="switch" aria-label="显示疗程时间轴" aria-checked="true"/, 'The account modal toggle should be accessible as a switch');
   assert.match(html, /capture-failed/, 'Pointer capture failures must not break touch pagination');
   assert.match(html, /AUTH_SERVICE_UNREACHABLE/, 'A fetch-level login failure should explain the network/VPN requirement');
   assert.match(html, /无法连接登录服务，请检查网络或 VPN 后重试/, 'Login fetch errors should not expose a raw Failed to fetch message');

@@ -160,6 +160,40 @@
       color: #27F2C3;
     }
 
+    .timeline-visibility-switch {
+      position: relative;
+      width: 44px;
+      height: 26px;
+      flex: 0 0 auto;
+      border: 1px solid rgba(145, 166, 190, 0.32);
+      border-radius: 999px;
+      background: rgba(145, 166, 190, 0.18);
+      transition: background 160ms ease, border-color 160ms ease;
+    }
+
+    .timeline-visibility-switch::after {
+      content: '';
+      position: absolute;
+      top: 3px;
+      left: 3px;
+      width: 18px;
+      height: 18px;
+      border-radius: 999px;
+      background: #F4F7FB;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+      transition: transform 160ms ease;
+    }
+
+    .timeline-visibility-switch[aria-checked="true"] {
+      background: rgba(39, 242, 195, 0.82);
+      border-color: rgba(39, 242, 195, 0.9);
+    }
+
+    .timeline-visibility-switch[aria-checked="true"]::after {
+      transform: translateX(18px);
+      background: #06111F;
+    }
+
     .glass-surface {
       background: rgba(11, 26, 42, 0.88);
       backdrop-filter: blur(18px);
@@ -918,6 +952,14 @@
           <span id="sessionLastSyncTime" class="font-bold text-white">刚刚</span>
         </div>
 
+        <div class="p-3 rounded-xl bg-black/50 border border-[rgba(145,166,190,0.18)] flex items-center justify-between gap-3">
+          <div class="min-w-0">
+            <div class="font-bold text-white">疗程时间轴</div>
+            <div class="text-[10px] text-cyberTextDim mt-1">隐藏只影响页面显示，不会删除给药记录</div>
+          </div>
+          <button id="btnToggleTimelineVisibility" type="button" role="switch" aria-label="显示疗程时间轴" aria-checked="true" class="timeline-visibility-switch" title="显示或隐藏疗程时间轴"></button>
+        </div>
+
         <!-- 高级存储配置（折叠保护） -->
         <details class="group mt-2 border border-white/5 rounded-xl bg-black/30 p-2.5 text-xs">
           <summary class="cursor-pointer text-[11px] text-cyberTextDim hover:text-white flex items-center justify-between select-none">
@@ -1090,6 +1132,40 @@
     const STORAGE_KEY_WEIGHTS = 'tirzepatide_weights_v3';
     const STORAGE_KEY_DOSES = 'tirzepatide_doses_v3';
     const STORAGE_KEY_SCHEDULE = 'tirzepatide_schedule_v1';
+    const STORAGE_KEY_TIMELINE_VISIBILITY = 'tirz_timeline_visible_v1';
+
+    function readTimelineVisibilityPreference() {
+      try {
+        return localStorage.getItem(STORAGE_KEY_TIMELINE_VISIBILITY) !== 'false';
+      } catch (e) {
+        return true;
+      }
+    }
+
+    let timelineIsVisible = readTimelineVisibilityPreference();
+
+    function applyTimelineVisibility() {
+      const section = document.getElementById('treatmentTimeline');
+      const toggle = document.getElementById('btnToggleTimelineVisibility');
+      if (section) {
+        section.classList.toggle('hidden', !timelineIsVisible);
+        section.setAttribute('aria-hidden', String(!timelineIsVisible));
+      }
+      if (toggle) toggle.setAttribute('aria-checked', String(timelineIsVisible));
+    }
+
+    function setTimelineVisibility(visible) {
+      const nextVisibility = !!visible;
+      try {
+        localStorage.setItem(STORAGE_KEY_TIMELINE_VISIBILITY, String(nextVisibility));
+      } catch (e) {
+        showToast('无法保存显示设置，请检查浏览器存储权限', 'error');
+        return;
+      }
+      timelineIsVisible = nextVisibility;
+      applyTimelineVisibility();
+      showToast(timelineIsVisible ? '已显示疗程时间轴' : '已隐藏疗程时间轴');
+    }
 
     const WORKER_API_BASE = 'https://tirz-tracker.walkingscr.workers.dev';
     const API_BASE = (window.location.protocol === 'file:' || window.location.hostname.endsWith('.github.io'))
@@ -2593,6 +2669,7 @@
     }
 
     function refreshAllUI() {
+      applyTimelineVisibility();
       calculateStats();
       renderTelemetryChart();
       renderTreatmentTimeline();
@@ -3617,11 +3694,16 @@
       const btnHeaderSync = document.getElementById('btnHeaderSync');
       const sessionInfoModal = document.getElementById('sessionInfoModal');
       const btnCloseSessionInfoModal = document.getElementById('btnCloseSessionInfoModal');
+      const btnToggleTimelineVisibility = document.getElementById('btnToggleTimelineVisibility');
       if (btnHeaderSync && sessionInfoModal) {
         btnHeaderSync.onclick = () => sessionInfoModal.classList.remove('hidden');
       }
       if (btnCloseSessionInfoModal && sessionInfoModal) {
         btnCloseSessionInfoModal.onclick = () => sessionInfoModal.classList.add('hidden');
+      }
+      if (btnToggleTimelineVisibility) {
+        btnToggleTimelineVisibility.onclick = () => setTimelineVisibility(!timelineIsVisible);
+        applyTimelineVisibility();
       }
 
       // 2. 趋势范围切换按钮
