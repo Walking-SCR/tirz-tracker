@@ -103,8 +103,26 @@ export default {
 
     // 2. 认证路由（/api/auth/*）
     if (path.startsWith('/api/auth/')) {
-      const authRes = await handleAuthRoutes(request, reqEnv, url);
-      if (authRes) return addSecurityHeaders(authRes, request);
+      try {
+        const authRes = await handleAuthRoutes(request, reqEnv, url);
+        if (authRes) return addSecurityHeaders(authRes, request);
+      } catch (error) {
+        const missingSigningKey = String(error?.message || '').includes('AUTH_SIGNING_KEY_NOT_CONFIGURED');
+        console.error(JSON.stringify({
+          event: 'auth_route_failed',
+          path,
+          error: missingSigningKey ? 'AUTH_SIGNING_KEY_NOT_CONFIGURED' : 'AUTH_ROUTE_ERROR'
+        }));
+        return addSecurityHeaders(new Response(JSON.stringify({
+          error: missingSigningKey ? 'AUTH_NOT_CONFIGURED' : 'AUTH_SERVICE_ERROR',
+          message: missingSigningKey
+            ? '登录服务尚未完成安全配置，请联系管理员配置 AUTH_SIGNING_KEY。'
+            : '登录服务暂时异常，请稍后重试。'
+        }), {
+          status: missingSigningKey ? 503 : 500,
+          headers: { 'Content-Type': 'application/json; charset=utf-8' }
+        }), request);
+      }
     }
 
     // 3. 业务 API 路由（/api/records、/api/doses、/api/photos、/api/ai）

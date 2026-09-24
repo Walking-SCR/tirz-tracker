@@ -1161,12 +1161,20 @@
       },
 
       async login(email) {
-        const res = await fetch(`${API_BASE}/api/auth/login`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', ...this.getCustomHeaders() },
-          credentials: 'include',
-          body: JSON.stringify({ email })
-        });
+        let res;
+        try {
+          res = await fetch(`${API_BASE}/api/auth/login`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', ...this.getCustomHeaders() },
+            credentials: 'include',
+            body: JSON.stringify({ email })
+          });
+        } catch (cause) {
+          const err = new Error('无法连接登录服务，请检查网络或 VPN 后重试。');
+          err.code = 'AUTH_SERVICE_UNREACHABLE';
+          err.cause = cause;
+          throw err;
+        }
         const data = await res.json();
         if (!res.ok) {
           const err = new Error(data.message || '登录失败');
@@ -1736,13 +1744,6 @@
       if (!canvas) return;
 
       const sortedAsc = [...weightRecords].sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
-      if (sortedAsc.length === 0) {
-        if (chartInstance) {
-          chartInstance.destroy();
-          chartInstance = null;
-        }
-        return;
-      }
 
       // 根据范围筛选记录
       const now = Date.now();
@@ -1780,8 +1781,7 @@
       gradient.addColorStop(0, 'rgba(39, 242, 195, 0.35)');
       gradient.addColorStop(1, 'rgba(39, 242, 195, 0.0)');
 
-      // 目标基准线数据
-      const targetLine = filtered.map(() => 148.0);
+      const targetWeight = 148;
 
       // 自定义数值标签绘制插件
       const dataLabelsPlugin = {
@@ -1802,8 +1802,40 @@
             }
           });
           ctx.restore();
+        },
+        afterDraw(chart) {
+          const yScale = chart.scales.y;
+          const area = chart.chartArea;
+          if (!yScale || !area) return;
+
+          const y = yScale.getPixelForValue(targetWeight);
+          if (y < area.top || y > area.bottom) return;
+
+          const { ctx } = chart;
+          ctx.save();
+          ctx.beginPath();
+          ctx.rect(area.left, area.top, area.right - area.left, area.bottom - area.top);
+          ctx.clip();
+          ctx.setLineDash([6, 5]);
+          ctx.lineWidth = 1.5;
+          ctx.strokeStyle = 'rgba(39, 242, 195, 0.9)';
+          ctx.beginPath();
+          ctx.moveTo(area.left, y);
+          ctx.lineTo(area.right, y);
+          ctx.stroke();
+          ctx.setLineDash([]);
+          ctx.font = '12px "SF Mono", monospace';
+          ctx.textAlign = 'right';
+          ctx.textBaseline = 'bottom';
+          ctx.fillStyle = '#27F2C3';
+          ctx.fillText(`目标 ${targetWeight}`, area.right - 2, y - 4);
+          ctx.restore();
         }
       };
+
+      const chartValues = dataPoints.filter(Number.isFinite);
+      const yMin = Math.min(145, Math.floor(Math.min(targetWeight, ...chartValues) / 5) * 5);
+      const yMax = Math.max(180, Math.ceil(Math.max(targetWeight, ...chartValues) / 5) * 5);
 
       chartInstance = new Chart(ctx, {
         type: 'line',
@@ -1830,16 +1862,6 @@
               },
               pointHoverRadius: 7
             },
-            {
-              label: '目标 148',
-              data: targetLine,
-              borderColor: 'rgba(39, 242, 195, 0.45)',
-              borderDash: [4, 4],
-              borderWidth: 1.5,
-              fill: false,
-              pointRadius: 0,
-              pointHoverRadius: 0
-            }
           ]
         },
         plugins: [dataLabelsPlugin],
@@ -1877,7 +1899,8 @@
               }
             },
             y: {
-              min: 145,
+              min: yMin,
+              max: yMax,
               grid: { color: 'rgba(145, 166, 190, 0.08)' },
               ticks: { color: '#93A4B8', font: { family: 'monospace', size: 11 }, stepSize: 5 }
             }
@@ -1902,6 +1925,12 @@
       return new Date(`${key}T12:00:00`);
     }
 
+    function timelineAddDays(dateKey, days) {
+      const date = timelineDateFromKey(dateKey);
+      date.setDate(date.getDate() + days);
+      return timelineDateKey(date);
+    }
+
     function timelineFirstDose() {
       return [...doseRecords].sort((a, b) => {
         const aTs = a.timestamp || timelineDateFromKey(a.date || timelineDateKey(new Date())).getTime();
@@ -1919,6 +1948,33 @@
       return timelineDateKey(value || fallback);
     }
 
+    function timelineDoseSequenceNumber(dose, sortedDoses) {
+      const explicitSequence = String(dose?.seq || '').match(/(\d+)/);
+      if (explicitSequence) return Number(explicitSequence[1]);
+      return Math.max(1, sortedDoses.findIndex(item => item.id === dose?.id) + 1);
+    }
+
+    function timelineProjectedDoses(todayKey = timelineDateKey(new Date())) {
+      const sortedDoses = [...doseRecords].sort((a, b) => {
+        const aKey = timelineNormalizeKey(a.date, a.timestamp || todayKey);
+        const bKey = timelineNormalizeKey(b.date, b.timestamp || todayKey);
+        return aKey.localeCompare(bKey) || (a.timestamp || 0) - (b.timestamp || 0);
+      });
+      const latestDose = sortedDoses[sortedDoses.length - 1] || null;
+      if (!latestDose) return [];
+
+      const latestDateKey = timelineNormalizeKey(latestDose.date, latestDose.timestamp || todayKey);
+      const intervalDays = Number(latestDose.intervalDays || treatmentSchedule.intervalDays) || 7;
+      const firstSequence = timelineDoseSequenceNumber(latestDose, sortedDoses);
+      return Array.from({ length: 4 }, (_, index) => ({
+        date: timelineAddDays(latestDateKey, intervalDays * (index + 1)),
+        seq: `第 ${firstSequence + index + 1} 针`,
+        ordinal: firstSequence + index + 1,
+        step: index + 1,
+        isForecast: true
+      }));
+    }
+
     function getTimelineWindowInfo(now = new Date()) {
       const todayKey = timelineDateKey(now);
       const firstDose = timelineFirstDose();
@@ -1926,10 +1982,13 @@
         ? timelineNormalizeKey(firstDose.date, firstDose.timestamp || now)
         : todayKey;
       const daysToToday = Math.max(0, timelineDaysBetween(firstDoseKey, todayKey));
-      // 首针是硬边界；在今天之后保留两周浏览空间，避免滑到“无穷未来”。
-      // 首针数据尚未从云端返回时也保留 28 天浏览空间，避免 maxOffset=0
-      // 把所有左滑都钳制成无动作。
-      const maxOffsetDays = firstDose ? daysToToday + 14 : 28;
+      const projectedDoses = timelineProjectedDoses(todayKey);
+      const projectedEndOffset = projectedDoses.length
+        ? timelineDaysBetween(firstDoseKey, projectedDoses[projectedDoses.length - 1].date)
+        : 0;
+      // 有疗程时以第四个未来预测针次为明确浏览终点，不无限延伸空日期；
+      // 未开始时允许预览未来 28 天，避免 maxOffset=0 造成拖动无效。
+      const maxOffsetDays = firstDose ? Math.max(daysToToday, projectedEndOffset) : 28;
       const todayWindowOffset = firstDose
         ? Math.max(0, Math.min(maxOffsetDays, daysToToday - 3))
         : 0;
@@ -1941,7 +2000,7 @@
       }
       timelineInitialFirstDoseKey = firstDose ? firstDoseKey : null;
       timelineWindowOffsetDays = Math.max(0, Math.min(maxOffsetDays, timelineWindowOffsetDays));
-      return { todayKey, firstDose, firstDoseKey, daysToToday, maxOffsetDays, todayWindowOffset };
+      return { todayKey, firstDose, firstDoseKey, daysToToday, maxOffsetDays, todayWindowOffset, projectedDoses };
     }
 
     function renderTreatmentTimeline() {
@@ -1950,21 +2009,22 @@
       if (!container) return;
 
       const info = getTimelineWindowInfo();
-      const { todayKey, firstDose, firstDoseKey, maxOffsetDays, todayWindowOffset } = info;
+      const { todayKey, firstDose, firstDoseKey, daysToToday, maxOffsetDays, todayWindowOffset, projectedDoses } = info;
       const latestDose = [...doseRecords].sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0))[0] || null;
       const intervalDays = (latestDose && latestDose.intervalDays) ? latestDose.intervalDays : treatmentSchedule.intervalDays;
-      const latestDoseTimestamp = latestDose
-        ? (latestDose.timestamp || timelineDateFromKey(latestDose.date || todayKey).getTime())
+      const nextDoseDateStr = projectedDoses[0]?.date || '';
+      const nextDoseTimestamp = nextDoseDateStr
+        ? new Date(`${nextDoseDateStr}T${latestDose?.time || '20:00'}:00`).getTime()
         : null;
-      const nextDoseTimestamp = latestDoseTimestamp ? latestDoseTimestamp + intervalDays * DAY_MS : null;
-      const nextDoseDateStr = nextDoseTimestamp ? timelineDateKey(nextDoseTimestamp) : '';
+      const projectedByDate = new Map(projectedDoses.map(dose => [dose.date, dose]));
       const windowStart = timelineDateFromKey(firstDoseKey);
       windowStart.setDate(windowStart.getDate() + timelineWindowOffsetDays);
 
-      const weekNumber = Math.floor(timelineWindowOffsetDays / 7) + 1;
       if (weekText) {
         weekText.textContent = firstDose
-          ? `第 ${weekNumber} 周 · ${windowStart.getFullYear()}年${windowStart.getMonth() + 1}月`
+          ? (firstDoseKey <= todayKey
+            ? `疗程第 ${daysToToday + 1} 天`
+            : `计划于 ${firstDoseKey} 启动`)
           : '尚未开始 · 首针后显示';
       }
       const resetButton = document.getElementById('timelineResetToday');
@@ -1994,7 +2054,7 @@
         const isPast = dStr < todayKey;
         const doseOnThisDay = doseRecords.find(dose => timelineNormalizeKey(dose.date, dose.timestamp) === dStr);
         const weightOnThisDay = weightRecords.find(record => timelineNormalizeKey(record.date, record.timestamp) === dStr);
-        const isNextDoseDay = dStr === nextDoseDateStr;
+        const projectedDose = projectedByDate.get(dStr);
         const node = document.createElement('div');
         node.dataset.timelineKey = dStr;
         node.className = 'flex flex-col items-center cursor-pointer select-none group min-w-0';
@@ -2015,11 +2075,18 @@
           circleHtml = `<div class="w-10 h-10 rounded-full bg-[#0B1A2A] border-2 border-cyberNeon flex items-center justify-center shadow-[0_0_14px_rgba(39,242,195,0.8)] active:scale-95 transition"><div class="w-3 h-3 rounded-full bg-cyberNeon shadow-[0_0_8px_#27F2C3]"></div></div>`;
           labelHtml = `<span class="text-xs font-mono font-bold px-2 py-0.5 rounded-full bg-cyberNeon text-[#06111F] mt-1.5 shadow-sm">今天</span><span class="text-[11px] font-mono text-cyberTextDim mt-0.5">${wName}</span>`;
           openNode(() => openDoseModal());
-        } else if (isNextDoseDay) {
+        } else if (projectedDose) {
           // 设计稿的“下次给药”是实线紫色环，不是虚线；尺寸与今天/已完成节点一致。
           circleHtml = `<div class="w-10 h-10 rounded-full bg-[#0B1A2A] border-2 border-cyberPurple text-cyberPurple flex items-center justify-center shadow-[0_0_12px_rgba(168,139,255,0.42)] active:scale-95 transition"><i class="ph-bold ph-syringe text-lg"></i></div>`;
-          labelHtml = `<span class="text-xs font-mono font-bold text-cyberPurple mt-1.5">下次给药</span><span class="text-[11px] font-mono text-cyberTextDim">${wName}</span>`;
-          openNode(() => openDoseModal());
+          const forecastLabel = projectedDose.step === 1
+            ? '下次给药'
+            : `预计${projectedDose.seq}`;
+          labelHtml = `<span class="text-xs font-mono font-bold text-cyberPurple mt-1.5">${forecastLabel}</span><span class="text-[11px] font-mono text-cyberTextDim">${wName}</span>`;
+          openNode(() => {
+            openDoseModal();
+            const seqInput = document.getElementById('doseSeqInput');
+            if (seqInput) seqInput.value = projectedDose.seq;
+          });
         } else if (isPast) {
           // 有体重记录的日期使用设计稿中的霓虹青边框；只有时间经过但没有
           // 体重记录的日期使用 slate 边框，分别对应设计稿的 9/20、9/21 与 9/18。
@@ -2046,6 +2113,25 @@
       if (!viewport || viewport.dataset.timelineBound === 'true') return;
       viewport.dataset.timelineBound = 'true';
       const timelineDebugEnabled = new URLSearchParams(window.location.search).get('debug') === '1';
+      // 手机屏幕可见的调试悬浮层：iPhone 上没有控制台，事件流必须直接画在页面上才能取证。
+      // 头部展示构建标记与设备能力，用于确认手机加载的是新代码、触摸/指针事件是否被派发。
+      const TIMELINE_DEBUG_BUILD = 'timeline-debug-20260924-a';
+      let timelineDebugOverlay = null;
+      let timelineDebugOverlayList = null;
+      if (timelineDebugEnabled) {
+        timelineDebugOverlay = document.createElement('div');
+        timelineDebugOverlay.style.cssText = 'position:fixed;left:8px;right:8px;bottom:calc(env(safe-area-inset-bottom, 0px) + 8px);z-index:9999;max-height:42vh;overflow:auto;background:rgba(6,17,31,0.94);border:1px solid rgba(39,242,195,0.5);border-radius:10px;padding:8px 10px;font:11px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;color:#27F2C3;-webkit-user-select:none;user-select:none;pointer-events:none;';
+        const capabilities = [
+          `build=${TIMELINE_DEBUG_BUILD}`,
+          `url=${window.location.pathname}`,
+          `maxTouchPoints=${navigator.maxTouchPoints ?? 'n/a'}`,
+          `touchstart=${'ontouchstart' in window ? 'yes' : 'no'}`,
+          `PointerEvent=${typeof window.PointerEvent === 'function' ? 'yes' : 'no'}`
+        ].join(' | ');
+        timelineDebugOverlay.innerHTML = `<div style="color:#F4F7FB;margin-bottom:4px;">[时间轴手势调试]<br>${capabilities}</div><div data-role="log-list"></div>`;
+        document.body.appendChild(timelineDebugOverlay);
+        timelineDebugOverlayList = timelineDebugOverlay.querySelector('[data-role="log-list"]');
+      }
       const timelineDebugLog = (phase, details = {}) => {
         if (!timelineDebugEnabled) return;
         const entry = {
@@ -2055,6 +2141,14 @@
         };
         window.__timelineDebugLog = [...(window.__timelineDebugLog || []), entry].slice(-80);
         console.info('[timeline-debug]', entry);
+        if (timelineDebugOverlayList) {
+          const line = document.createElement('div');
+          const summary = Object.entries(details).map(([key, value]) => `${key}=${typeof value === 'object' ? JSON.stringify(value) : value}`).join(' ');
+          line.textContent = `${entry.at.slice(11, 23)} ${phase} ${summary}`;
+          timelineDebugOverlayList.appendChild(line);
+          timelineDebugOverlayList.parentElement.scrollTop = timelineDebugOverlayList.parentElement.scrollHeight;
+          while (timelineDebugOverlayList.childElementCount > 30) timelineDebugOverlayList.removeChild(timelineDebugOverlayList.firstChild);
+        }
       };
       const hint = document.getElementById('timelineGestureHint');
       const resetButton = document.getElementById('timelineResetToday');
@@ -2079,14 +2173,17 @@
           track.style.transform = '';
         }
       };
-      const cancelDrag = () => {
+      const cancelDrag = (event, source = null, reason = 'cancel') => {
         if (!timelineDragState) return;
-        timelineDebugLog('cancel', { axis: timelineDragState.axis });
+        if (source && timelineDragState.source !== source) return;
+        if (source === 'pointer' && event?.pointerId !== timelineDragState.pointerId) return;
+        if (source === 'touch' && event?.changedTouches && ![...event.changedTouches].some(touch => touch.identifier === timelineDragState.identifier)) return;
+        timelineDebugLog('cancel', { axis: timelineDragState.axis, source: timelineDragState.source, reason });
         timelineDragState = null;
         clearVisualDrag();
         setHint('左右滑动 4 天查看更多日期');
       };
-      const startDrag = (event) => {
+      const startDrag = (event, source) => {
         if (event.pointerType === 'mouse' && event.button !== 0) return;
         if (timelineDragState) return;
         timelineDragState = {
@@ -2095,7 +2192,8 @@
           lastX: event.clientX,
           lastY: event.clientY,
           pointerId: event.pointerId,
-          captureEligible: event.type?.startsWith('pointer') === true,
+          identifier: event.identifier,
+          source,
           axis: null,
           dragging: false,
           moveCount: 0
@@ -2103,15 +2201,18 @@
         timelineSuppressClick = false;
         timelineDebugLog('start', {
           type: event.type || 'touch-fallback',
+          source,
           pointerType: event.pointerType || 'touch',
           x: event.clientX,
           y: event.clientY,
           pointerId: event.pointerId
         });
       };
-      const moveDrag = (event) => {
+      const moveDrag = (event, source) => {
         const state = timelineDragState;
-        if (!state) return;
+        if (!state || state.source !== source) return;
+        if (source === 'pointer' && event.pointerId !== state.pointerId) return;
+        if (source === 'touch' && event.identifier !== state.identifier) return;
         state.lastX = event.clientX;
         state.lastY = event.clientY;
         state.moveCount += 1;
@@ -2128,7 +2229,7 @@
           viewport.classList.add('is-dragging');
           const track = getTrack();
           if (track) track.classList.add('is-dragging');
-          if (state.captureEligible && state.pointerId !== undefined) {
+          if (source === 'pointer' && state.pointerId !== undefined) {
             try {
               viewport.setPointerCapture?.(state.pointerId);
             } catch (error) {
@@ -2151,9 +2252,11 @@
         const previewOffset = Math.max(0, Math.min(getTimelineWindowInfo().maxOffsetDays, timelineWindowOffsetDays + Math.round(-dx / perDay)));
         setHint(`拖动到 ${previewDate(previewOffset)}`, true);
       };
-      const endDrag = (event) => {
+      const endDrag = (event, source) => {
         const state = timelineDragState;
-        if (!state) return;
+        if (!state || state.source !== source) return;
+        if (source === 'pointer' && event.pointerId !== state.pointerId) return;
+        if (source === 'touch' && event.identifier !== state.identifier) return;
         timelineDragState = null;
         if (state.axis !== 'horizontal') {
           clearVisualDrag();
@@ -2187,7 +2290,10 @@
             track.style.transition = 'transform 160ms ease-out';
             track.style.transform = `translateX(${deltaX * 0.2}px)`;
           }
-          setHint(direction > 0 ? '已到可浏览的最近日期' : '已到首针，不能继续向前');
+          const lastForecast = info.projectedDoses[info.projectedDoses.length - 1];
+          setHint(direction > 0
+            ? `已到${lastForecast?.seq || '可浏览的最后日期'}`
+            : '已到首针，不能继续向前');
           timelineAnimationTimer = window.setTimeout(() => { clearVisualDrag(); }, 170);
         } else {
           if (track) {
@@ -2203,46 +2309,55 @@
         window.setTimeout(() => { timelineSuppressClick = false; }, 450);
       };
 
-      // 部分 iPhone WebView/Safari 版本不会完整派发 Pointer Events，
-      // 因此保留 Touch Events 回退，保证横向左滑仍能进入分页逻辑。
-      const touchPoint = (event) => event.touches?.[0] || event.changedTouches?.[0];
-      const asPointerLikeEvent = (event) => {
-        const point = touchPoint(event);
+      // 旧版 iPhone WebView 不支持 Pointer Events 时，使用匹配 touch identifier 的回退。
+      const touchPoint = (touchList, identifier = null) => [...(touchList || [])]
+        .find(point => identifier === null || point.identifier === identifier) || null;
+      const asTouchPoint = (event, identifier = null) => {
+        const point = touchPoint(event.touches, identifier) || touchPoint(event.changedTouches, identifier);
         if (!point) return null;
         return {
           clientX: point.clientX,
           clientY: point.clientY,
-          pointerId: 1,
+          identifier: point.identifier,
           pointerType: 'touch',
+          type: event.type,
           preventDefault: () => event.preventDefault()
         };
       };
       const startTouch = (event) => {
-        const normalized = asPointerLikeEvent(event);
-        if (normalized) startDrag(normalized);
+        if (event.touches?.length > 1) {
+          cancelDrag(event, 'touch', 'multi-touch');
+          return;
+        }
+        const normalized = asTouchPoint(event);
+        if (normalized) startDrag(normalized, 'touch');
       };
       const moveTouch = (event) => {
-        const normalized = asPointerLikeEvent(event);
-        if (normalized) moveDrag(normalized);
+        if (event.touches?.length > 1) {
+          cancelDrag(event, 'touch', 'multi-touch');
+          return;
+        }
+        const normalized = asTouchPoint(event, timelineDragState?.identifier);
+        if (normalized) moveDrag(normalized, 'touch');
       };
       const endTouch = (event) => {
-        const normalized = asPointerLikeEvent(event);
-        if (normalized) endDrag(normalized);
+        const normalized = asTouchPoint(event, timelineDragState?.identifier);
+        if (normalized) endDrag(normalized, 'touch');
       };
 
-      viewport.onpointerdown = startDrag;
-      viewport.onpointermove = moveDrag;
-      viewport.onpointerup = endDrag;
-      viewport.onpointercancel = cancelDrag;
-      viewport.onlostpointercapture = (event) => {
-        if (timelineDragState && timelineDragState.axis === 'horizontal') endDrag(event);
-      };
-      // Pointer Events 与 Touch Events 在部分 iOS 版本会同时触发；
-      // 两套事件都监听，由 timelineDragState 防止重复分页，避免设备能力判断误判。
-      viewport.addEventListener('touchstart', startTouch, { passive: false });
-      viewport.addEventListener('touchmove', moveTouch, { passive: false });
-      viewport.addEventListener('touchend', endTouch, { passive: false });
-      viewport.addEventListener('touchcancel', cancelDrag, { passive: false });
+      viewport.onpointerdown = (event) => startDrag(event, 'pointer');
+      viewport.onpointermove = (event) => moveDrag(event, 'pointer');
+      viewport.onpointerup = (event) => endDrag(event, 'pointer');
+      viewport.onpointercancel = (event) => cancelDrag(event, 'pointer', 'pointercancel');
+      viewport.onlostpointercapture = (event) => cancelDrag(event, 'pointer', 'lostpointercapture');
+      // Pointer Events 优先；仅不支持 PointerEvent 的旧 Safari/WebView 走 Touch Events，
+      // 避免两种事件同时接管一条手势并互相覆盖起止坐标。
+      if (!('PointerEvent' in window)) {
+        viewport.addEventListener('touchstart', startTouch, { passive: false });
+        viewport.addEventListener('touchmove', moveTouch, { passive: false });
+        viewport.addEventListener('touchend', endTouch, { passive: false });
+        viewport.addEventListener('touchcancel', (event) => cancelDrag(event, 'touch', 'touchcancel'), { passive: false });
+      }
       if (resetButton) resetButton.onclick = () => {
         const info = getTimelineWindowInfo();
         timelineWindowOffsetDays = info.todayWindowOffset;
