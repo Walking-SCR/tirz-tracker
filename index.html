@@ -114,6 +114,12 @@
       touch-action: none;
     }
 
+    /* iOS Safari uses its native Touch Events path below; keep vertical page scroll available. */
+    .timeline-viewport.is-touch-driven,
+    .timeline-viewport.is-touch-driven.is-dragging {
+      touch-action: pan-y;
+    }
+
     .timeline-track {
       transition: transform 180ms ease-out;
       will-change: transform;
@@ -2113,9 +2119,13 @@
       if (!viewport || viewport.dataset.timelineBound === 'true') return;
       viewport.dataset.timelineBound = 'true';
       const timelineDebugEnabled = new URLSearchParams(window.location.search).get('debug') === '1';
+      const isAppleTouchBrowser = /iPhone|iPad|iPod/.test(navigator.userAgent)
+        || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+      const useTouchEvents = isAppleTouchBrowser || !('PointerEvent' in window);
+      if (useTouchEvents) viewport.classList.add('is-touch-driven');
       // 手机屏幕可见的调试悬浮层：iPhone 上没有控制台，事件流必须直接画在页面上才能取证。
       // 头部展示构建标记与设备能力，用于确认手机加载的是新代码、触摸/指针事件是否被派发。
-      const TIMELINE_DEBUG_BUILD = 'timeline-debug-20260924-a';
+      const TIMELINE_DEBUG_BUILD = 'timeline-debug-20260924-b';
       let timelineDebugOverlay = null;
       let timelineDebugOverlayList = null;
       if (timelineDebugEnabled) {
@@ -2126,7 +2136,8 @@
           `url=${window.location.pathname}`,
           `maxTouchPoints=${navigator.maxTouchPoints ?? 'n/a'}`,
           `touchstart=${'ontouchstart' in window ? 'yes' : 'no'}`,
-          `PointerEvent=${typeof window.PointerEvent === 'function' ? 'yes' : 'no'}`
+          `PointerEvent=${typeof window.PointerEvent === 'function' ? 'yes' : 'no'}`,
+          `input=${useTouchEvents ? 'touch' : 'pointer'}`
         ].join(' | ');
         timelineDebugOverlay.innerHTML = `<div style="color:#F4F7FB;margin-bottom:4px;">[时间轴手势调试]<br>${capabilities}</div><div data-role="log-list"></div>`;
         document.body.appendChild(timelineDebugOverlay);
@@ -2345,18 +2356,20 @@
         if (normalized) endDrag(normalized, 'touch');
       };
 
-      viewport.onpointerdown = (event) => startDrag(event, 'pointer');
-      viewport.onpointermove = (event) => moveDrag(event, 'pointer');
-      viewport.onpointerup = (event) => endDrag(event, 'pointer');
-      viewport.onpointercancel = (event) => cancelDrag(event, 'pointer', 'pointercancel');
-      viewport.onlostpointercapture = (event) => cancelDrag(event, 'pointer', 'lostpointercapture');
-      // Pointer Events 优先；仅不支持 PointerEvent 的旧 Safari/WebView 走 Touch Events，
-      // 避免两种事件同时接管一条手势并互相覆盖起止坐标。
-      if (!('PointerEvent' in window)) {
+      // iPhone/iPad Safari explicitly use Touch Events even on releases which expose
+      // PointerEvent; touchmove is non-passive and prevents horizontal page gestures.
+      // This avoids Safari/WebView PointerEvent cancellation/capture differences.
+      if (useTouchEvents) {
         viewport.addEventListener('touchstart', startTouch, { passive: false });
         viewport.addEventListener('touchmove', moveTouch, { passive: false });
         viewport.addEventListener('touchend', endTouch, { passive: false });
         viewport.addEventListener('touchcancel', (event) => cancelDrag(event, 'touch', 'touchcancel'), { passive: false });
+      } else {
+        viewport.onpointerdown = (event) => startDrag(event, 'pointer');
+        viewport.onpointermove = (event) => moveDrag(event, 'pointer');
+        viewport.onpointerup = (event) => endDrag(event, 'pointer');
+        viewport.onpointercancel = (event) => cancelDrag(event, 'pointer', 'pointercancel');
+        viewport.onlostpointercapture = (event) => cancelDrag(event, 'pointer', 'lostpointercapture');
       }
       if (resetButton) resetButton.onclick = () => {
         const info = getTimelineWindowInfo();

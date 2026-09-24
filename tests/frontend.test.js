@@ -186,7 +186,10 @@ test('V6 interaction DOM IDs and structures are present', () => {
   assert.match(html, /TIMELINE_DRAG_STEP_DAYS = 4/, 'Timeline should page four days per swipe');
   assert.match(html, /state\.source !== source/, 'A gesture must stay bound to the event source that started it');
   assert.match(html, /state\.identifier/, 'Touch gestures must stay bound to the originating touch identifier');
-  assert.match(html, /if \(!\('PointerEvent' in window\)\)/, 'Pointer and touch handlers must not double-handle the same gesture');
+  assert.match(html, /const isAppleTouchBrowser = \/iPhone\|iPad\|iPod\//, 'iPhone/iPad Safari must be detected independently of PointerEvent support');
+  assert.match(html, /const useTouchEvents = isAppleTouchBrowser \|\| !\('PointerEvent' in window\)/, 'iOS Safari must use Touch Events even when it exposes Pointer Events');
+  assert.match(html, /if \(useTouchEvents\)[\s\S]{0,320}addEventListener\('touchstart'/, 'Touch and Pointer listeners must be mutually exclusive');
+  assert.match(html, /\.timeline-viewport\.is-touch-driven[\s\S]{0,120}touch-action: pan-y/, 'iOS touch mode must preserve vertical page scrolling while handling horizontal drags');
   assert.match(html, /const target = Math\.max\(0, Math\.min\(info\.maxOffsetDays, timelineWindowOffsetDays \+ \(shouldPage \? direction \* TIMELINE_DRAG_STEP_DAYS : 0\)\)\)/, 'Finger direction should map to bounded four-day timeline paging');
   assert.match(html, /timelineAddDays\(latestDateKey, intervalDays \* \(index \+ 1\)\)/, 'Future dose predictions should use local calendar-day arithmetic');
   assert.match(html, /Array\.from\(\{ length: 4 \}/, 'Timeline should forecast four upcoming doses');
