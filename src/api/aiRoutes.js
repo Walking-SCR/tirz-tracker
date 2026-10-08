@@ -62,6 +62,10 @@ function readUpstreamReason(upstreamText) {
   return reason;
 }
 
+function getRemainingUpstreamBudgetMs(startedAt) {
+  return Math.max(0, TOTAL_UPSTREAM_BUDGET_MS - (Date.now() - startedAt));
+}
+
 export async function handleAIRoutes(request, env, url, session) {
   if (url.pathname !== '/api/ai/analyze-scale' || request.method !== 'POST') return null;
 
@@ -117,61 +121,64 @@ export async function handleAIRoutes(request, env, url, session) {
 
   // --- 主通道：MiniMax-M3（HEIC/HEIF 无法解码，直接跳过）---
   if (minimaxKey && MINIMAX_SUPPORTED_MIME.test(mimeType)) {
-    attemptCount += 1;
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), UPSTREAM_TIMEOUT_MS);
-    const attemptStartedAt = Date.now();
-    try {
-      const res = await fetch(MINIMAX_API_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${minimaxKey}` },
-        signal: controller.signal,
-        body: JSON.stringify({
-          model: MINIMAX_MODEL,
-          messages: [{
-            role: 'user',
-            content: [
-              { type: 'text', text: prompt },
-              { type: 'image_url', image_url: { url: `data:${mimeType};base64,${pureBase64}` } }
-            ]
-          }],
-          max_completion_tokens: 64,
-          temperature: 0,
-          thinking: { type: 'disabled' }
-        })
-      });
-
-      lastStatus = res.status;
-      if (!res.ok) {
-        upstreamStatuses.push(res.status);
-        const upstreamText = await res.text().catch(() => '');
-        lastUpstreamReason = readUpstreamReason(upstreamText);
-        upstreamReasons.push(lastUpstreamReason);
-        lastError = new Error(`MiniMax HTTP ${res.status}`);
-        logEvent('warn', 'ai_upstream_error', {
-          requestId, endpoint: 'minimax', model: MINIMAX_MODEL, status: res.status,
-          reason: String(lastUpstreamReason).replace(/[\r\n]+/g, ' ').slice(0, 240),
-          durationMs: Date.now() - attemptStartedAt
+    const remainingBudgetMs = getRemainingUpstreamBudgetMs(startedAt);
+    if (remainingBudgetMs > 0) {
+      attemptCount += 1;
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), Math.min(UPSTREAM_TIMEOUT_MS, remainingBudgetMs));
+      const attemptStartedAt = Date.now();
+      try {
+        const res = await fetch(MINIMAX_API_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${minimaxKey}` },
+          signal: controller.signal,
+          body: JSON.stringify({
+            model: MINIMAX_MODEL,
+            messages: [{
+              role: 'user',
+              content: [
+                { type: 'text', text: prompt },
+                { type: 'image_url', image_url: { url: `data:${mimeType};base64,${pureBase64}` } }
+              ]
+            }],
+            max_completion_tokens: 64,
+            temperature: 0,
+            thinking: { type: 'disabled' }
+          })
         });
-      } else {
-        const data = await res.json();
-        const parsed = extractJson(data.choices?.[0]?.message?.content);
-        const weight = parseWeight(parsed);
-        if (weight === null) {
-          lastError = new Error('MiniMax response did not contain a valid weight');
-          logEvent('warn', 'ai_upstream_error', { requestId, endpoint: 'minimax', model: MINIMAX_MODEL, status: 200, reason: 'invalid_model_payload', durationMs: Date.now() - attemptStartedAt });
+
+        lastStatus = res.status;
+        if (!res.ok) {
+          upstreamStatuses.push(res.status);
+          const upstreamText = await res.text().catch(() => '');
+          lastUpstreamReason = readUpstreamReason(upstreamText);
+          upstreamReasons.push(lastUpstreamReason);
+          lastError = new Error(`MiniMax HTTP ${res.status}`);
+          logEvent('warn', 'ai_upstream_error', {
+            requestId, endpoint: 'minimax', model: MINIMAX_MODEL, status: res.status,
+            reason: String(lastUpstreamReason).replace(/[\r\n]+/g, ' ').slice(0, 240),
+            durationMs: Date.now() - attemptStartedAt
+          });
         } else {
-          logEvent('info', 'ai_request_completed', { requestId, endpoint: 'minimax', model: MINIMAX_MODEL, durationMs: Date.now() - startedAt, hasWeight: true });
-          return jsonResponse({ success: true, weight, unit: parsed.unit || '斤', confidence: parsed.confidence || 'high', model: MINIMAX_MODEL }, 200, requestId);
+          const data = await res.json();
+          const parsed = extractJson(data.choices?.[0]?.message?.content);
+          const weight = parseWeight(parsed);
+          if (weight === null) {
+            lastError = new Error('MiniMax response did not contain a valid weight');
+            logEvent('warn', 'ai_upstream_error', { requestId, endpoint: 'minimax', model: MINIMAX_MODEL, status: 200, reason: 'invalid_model_payload', durationMs: Date.now() - attemptStartedAt });
+          } else {
+            logEvent('info', 'ai_request_completed', { requestId, endpoint: 'minimax', model: MINIMAX_MODEL, durationMs: Date.now() - startedAt, hasWeight: true });
+            return jsonResponse({ success: true, weight, unit: parsed.unit || '斤', confidence: parsed.confidence || 'high', model: MINIMAX_MODEL }, 200, requestId);
+          }
         }
+      } catch (err) {
+        lastError = err;
+        const timedOut = err?.name === 'AbortError';
+        if (timedOut) timeoutCount += 1;
+        logEvent('warn', 'ai_upstream_error', { requestId, endpoint: 'minimax', model: MINIMAX_MODEL, reason: timedOut ? 'timeout' : 'network_error', durationMs: Date.now() - attemptStartedAt });
+      } finally {
+        clearTimeout(timeoutId);
       }
-    } catch (err) {
-      lastError = err;
-      const timedOut = err?.name === 'AbortError';
-      if (timedOut) timeoutCount += 1;
-      logEvent('warn', 'ai_upstream_error', { requestId, endpoint: 'minimax', model: MINIMAX_MODEL, reason: timedOut ? 'timeout' : 'network_error', durationMs: Date.now() - attemptStartedAt });
-    } finally {
-      clearTimeout(timeoutId);
     }
   }
 
@@ -182,10 +189,11 @@ export async function handleAIRoutes(request, env, url, session) {
   for (const endpoint of GEMINI_ENDPOINTS) {
     for (const model of modelsToTry) {
       if (!geminiKey) break attemptLoop;
-      if (attemptCount > 0 && Date.now() - startedAt > TOTAL_UPSTREAM_BUDGET_MS) break attemptLoop;
+      const remainingBudgetMs = getRemainingUpstreamBudgetMs(startedAt);
+      if (remainingBudgetMs <= 0) break attemptLoop;
       attemptCount += 1;
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), UPSTREAM_TIMEOUT_MS);
+      const timeoutId = setTimeout(() => controller.abort(), Math.min(UPSTREAM_TIMEOUT_MS, remainingBudgetMs));
       const modelStartedAt = Date.now();
       try {
         const apiUrl = `${endpoint.baseUrl}/${model}:generateContent`;
@@ -240,7 +248,10 @@ export async function handleAIRoutes(request, env, url, session) {
     }
   }
 
-  const timedOut = attemptCount > 0 && timeoutCount === attemptCount;
+  // Enforce the absolute chain deadline even when a previous fallback returned a
+  // fast HTTP error and the final attempt consumed the remaining budget.
+  const timedOut = getRemainingUpstreamBudgetMs(startedAt) === 0
+    || (attemptCount > 0 && timeoutCount === attemptCount);
   // "User location is not supported for the API use." —— 上游拒绝的是 Worker 的出口
   // 所在区域，而非图片本身。此处如实上报，不再误判为图片格式问题。
   const geoBlocked = upstreamReasons.some((reason) => /location is not supported/i.test(reason));

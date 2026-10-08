@@ -79,6 +79,47 @@ test('returns the normalized weight from the Gemini response', async () => {
   }
 });
 
+test('caps each fallback timeout to the remaining total upstream budget', async () => {
+  const originalFetch = globalThis.fetch;
+  const originalDateNow = Date.now;
+  const originalSetTimeout = globalThis.setTimeout;
+  const originalClearTimeout = globalThis.clearTimeout;
+  const delays = [];
+  let fakeNow = 10_000;
+  let calls = 0;
+
+  Date.now = () => fakeNow;
+  globalThis.setTimeout = (_callback, delay) => {
+    delays.push(delay);
+    return 1;
+  };
+  globalThis.clearTimeout = () => {};
+  globalThis.fetch = async () => {
+    calls += 1;
+    if (calls === 1) {
+      fakeNow += 9_500;
+      throw new DOMException('The operation was aborted', 'AbortError');
+    }
+    return new Response(JSON.stringify({
+      candidates: [{ content: { parts: [{ text: '{"weight":170.3,"unit":"斤"}' }] } }]
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  };
+
+  try {
+    const response = await handleAIRoutes(request({ imageBase64 }), { GEMINI_API_KEY: 'server-key' }, url);
+    const body = await json(response);
+    assert.equal(response.status, 200);
+    assert.equal(body.weight, 170.3);
+    assert.deepEqual(delays, [8_000, 2_500]);
+    assert.equal(calls, 2);
+  } finally {
+    globalThis.fetch = originalFetch;
+    Date.now = originalDateNow;
+    globalThis.setTimeout = originalSetTimeout;
+    globalThis.clearTimeout = originalClearTimeout;
+  }
+});
+
 test('uses MiniMax-M3 as the primary endpoint when MINIMAX_API_KEY is configured', async () => {
   const originalFetch = globalThis.fetch;
   let calledUrl = '';
