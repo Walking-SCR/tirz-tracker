@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import { parse } from 'acorn';
 import { getFallbackHtml } from '../src/fallbackHtml.js';
 
 test('index.html and public/index.html exist and are identical', () => {
@@ -202,7 +203,7 @@ test('V6 interaction DOM IDs and structures are present', () => {
   assert.match(html, /疗程第 \$\{daysToToday \+ 1\} 天/, 'Timeline header should show elapsed treatment day count');
   assert.match(html, /getPixelForValue\(targetWeight\)/, 'Goal line should be rendered at the target value even without data points');
   assert.match(html, /ctx\.setLineDash\(\[6, 5\]\)/, 'Goal line should have a visible dashed style');
-  assert.match(html, /ctx\.fillText\(`目标 \$\{targetWeight\}`/, 'Goal line should be labeled');
+  assert.match(html, /class="trend-target-legend">目标 148 斤/, 'Goal label should live outside the plot');
   assert.match(html, /const dataPoints = filtered\.map\(r => r\.weight\)/, 'Empty chart state should not create a visible null datapoint');
   assert.match(html, /const yMin = Math\.min\(145, Math\.floor\(Math\.min\(targetWeight, \.\.\.chartValues\)/, 'Y scale should include the target when all recorded values are below it');
   assert.match(html, /pastBorder[\s\S]{0,240}83,106,132,0\.78/, 'Completed timeline circles should use the design 2px slate border');
@@ -215,6 +216,105 @@ test('V6 interaction DOM IDs and structures are present', () => {
   assert.match(html, /\.hidden\s*\{\s*display:\s*none\s*!important;/, 'Critical hidden fallback CSS must not depend on Tailwind CDN');
   assert.match(html, /new URLSearchParams\(window\.location\.search\)/, 'Setup mode query should open the first-device flow');
   assert.match(html, /正在绑定/, 'Bootstrap action should show a visible pending state');
+});
+
+function trendPreviewHarness(records, range = 'all') {
+  const html = fs.readFileSync('index.html', 'utf8');
+  const mainScript = [...html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/g)]
+    .sort((a, b) => b[1].length - a[1].length)[0][1];
+  const ast = parse(mainScript, { ecmaVersion: 'latest' });
+  const render = ast.body.find(node => node.type === 'FunctionDeclaration' && node.id.name === 'renderTelemetryChart');
+  const elements = new Map();
+  const attributes = {};
+  const drawnLabels = [];
+  const ctx = {
+    createLinearGradient() { return { addColorStop() {} }; },
+    save() {}, restore() {}, beginPath() {}, rect() {}, clip() {},
+    setLineDash() {}, moveTo() {}, lineTo() {}, stroke() {}, arc() {}, fill() {},
+    fillRect() {},
+    measureText(text) { return { width: String(text).length * 7 }; },
+    fillText(text, x, y) { drawnLabels.push({ text, x, y, width: String(text).length * 7 }); }
+  };
+  const canvas = { getContext: () => ctx, setAttribute: (key, value) => { attributes[key] = value; } };
+  elements.set('weightChartCanvas', canvas);
+  elements.set('trendSelectedDate', {});
+  elements.set('trendGoalGap', {});
+  class MockChart {
+    constructor(context, config) {
+      this.ctx = context;
+      this.config = config;
+      this.chartArea = { left: 24, right: 320, top: 0, bottom: 180 };
+      this.scales = { y: { getPixelForValue: () => 160 } };
+      this.points = config.data.labels.map((_, i) => ({ x: 24 + i * 296 / Math.max(1, config.data.labels.length - 1), y: 60 }));
+      this.drawCount = 0;
+    }
+    getDatasetMeta() { return { data: this.points }; }
+    draw() { this.drawCount += 1; }
+  }
+  const chart = new Function('document', 'weightRecords', 'trendRange', 'Chart',
+    'let chartInstance; ' + mainScript.slice(render.start, render.end) + '; renderTelemetryChart(); return chartInstance;'
+  )({ getElementById: id => elements.get(id) }, records, range, MockChart);
+  return { chart, canvas, elements, attributes, drawnLabels };
+}
+
+test('trend readout and goal gap update with touch and keyboard', () => {
+  const records = Array.from({ length: 30 }, (_, index) => ({
+    date: '2026-10-' + String(index + 1).padStart(2, '0'),
+    timestamp: index + 1,
+    weight: 174.7 - index * 0.2
+  }));
+  const { chart, canvas, elements, attributes } = trendPreviewHarness(records);
+  assert.match(attributes['aria-valuetext'], /168\.9斤/);
+  assert.doesNotMatch(fs.readFileSync('index.html', 'utf8'), /id="trendSelectedWeight"/);
+  assert.equal(elements.get('trendGoalGap').textContent, '距目标还差 20.9 斤');
+  assert.match(elements.get('trendSelectedDate').textContent, /最新/);
+  assert.equal(chart.config.options.plugins.tooltip.enabled, false);
+  assert.equal(chart.config.options.scales.x.ticks.maxTicksLimit, 5);
+  const plugin = chart.config.plugins[0];
+  plugin.beforeDatasetsDraw(chart);
+  plugin.afterDatasetsDraw(chart);
+  const args = { event: { type: 'touchmove', x: 24, y: 60 } };
+  plugin.afterEvent(chart, args);
+  assert.match(attributes['aria-valuetext'], /174\.7斤/);
+  assert.equal(elements.get('trendGoalGap').textContent, '距目标还差 26.7 斤');
+  assert.equal(attributes['aria-valuenow'], '0');
+  assert.equal(args.changed, true);
+  canvas.onkeydown({ key: 'End', preventDefault() {} });
+  assert.match(attributes['aria-valuetext'], /168\.9斤/);
+  canvas.onkeydown({ key: 'ArrowLeft', preventDefault() {} });
+  assert.equal(attributes['aria-valuenow'], '28');
+  assert.equal(chart.drawCount, 2);
+});
+
+test('trend key labels remain sparse, inside the plot and separated for dense records', () => {
+  for (const count of [0, 7, 30, 90, 365]) {
+    const records = Array.from({ length: count }, (_, index) => ({
+      date: new Date(Date.UTC(2025, 0, index + 1)).toISOString().slice(0, 10),
+      timestamp: index + 1, weight: index % 2 ? 166.8 : 166.9
+    }));
+    const { chart, elements, drawnLabels } = trendPreviewHarness(records);
+    chart.config.plugins[0].beforeDatasetsDraw(chart);
+    chart.config.plugins[0].afterDatasetsDraw(chart);
+    if (!count) assert.equal(elements.get('trendSelectedDate').textContent, '暂无记录');
+    assert.equal(chart.points.length, count);
+    assert.ok(drawnLabels.length <= 3);
+    if (count) assert.ok(drawnLabels.length > 0);
+    for (let i = 0; i < drawnLabels.length; i++) {
+      const label = drawnLabels[i];
+      assert.ok(label.x - label.width / 2 >= chart.chartArea.left);
+      assert.ok(label.x + label.width / 2 <= chart.chartArea.right);
+      for (const other of drawnLabels.slice(i + 1)) {
+        assert.ok(Math.abs(label.x - other.x) >= (label.width + other.width) / 2 + 14);
+      }
+    }
+  }
+});
+
+test('trend goal gap handles no data, reaching the goal and going below it', () => {
+  assert.equal(trendPreviewHarness([]).elements.get('trendGoalGap').textContent, '距目标 -- 斤');
+  for (const [weight, expected] of [[148, '已达到目标'], [147.8, '低于目标 0.2 斤']]) {
+    assert.equal(trendPreviewHarness([{ date: '2026-10-15', timestamp: 1, weight }]).elements.get('trendGoalGap').textContent, expected);
+  }
 });
 
 test('Service Worker cache version is v6.0 in sw.js and public/sw.js', () => {
