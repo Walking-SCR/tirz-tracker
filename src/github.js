@@ -220,6 +220,28 @@ export async function saveDoses(env, doses, message = 'Update GLP-1 doses') {
   return await putFile(env, 'data/doses.json', b64, message, sha);
 }
 
+// Health data lives in its own private document and never falls back to weight/dose data.
+export async function getHealthDocument(env) {
+  const file = await getFile(env, 'data/health.json');
+  if (!file || !file.content) return { document: null, sha: null };
+  try {
+    const document = JSON.parse(base64ToUtf8(file.content));
+    if (!document || typeof document !== 'object' || !Array.isArray(document.indicators) || !Array.isArray(document.reports)) {
+      throw new Error('Invalid health document schema');
+    }
+    return { document, sha: file.sha };
+  } catch (error) {
+    throw new Error('HEALTH_DATA_INVALID: ' + error.message);
+  }
+}
+
+export async function saveHealthDocument(env, document, sha, message = 'Update private health data') {
+  const encoded = utf8ToBase64(JSON.stringify(document, null, 2));
+  // Do not retry a stale health document with a new SHA; let the caller reload
+  // and resolve the concurrent edit instead of overwriting another update.
+  return await putFile(env, 'data/health.json', encoded, message, sha, 1);
+}
+
 function imageExtensionFromDataUrl(base64Data) {
   const match = String(base64Data || '').match(/^data:([^;]+);base64,/i);
   const mime = (match ? match[1] : '').toLowerCase();

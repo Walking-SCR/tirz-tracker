@@ -4,6 +4,7 @@ import { handleRecordRoutes } from './api/recordRoutes.js';
 import { handleDoseRoutes } from './api/doseRoutes.js';
 import { handlePhotoRoutes } from './api/photoRoutes.js';
 import { handleAIRoutes } from './api/aiRoutes.js';
+import { handleHealthRoutes } from './api/healthRoutes.js';
 import { getFallbackHtml } from './fallbackHtml.js';
 
 const ALLOWED_EXTERNAL_ORIGINS = new Set(['https://walking-scr.github.io']);
@@ -132,6 +133,11 @@ export default {
       if (path.startsWith('/api/ai/')) {
         const aiRes = await handleAIRoutes(request, reqEnv, url, session);
         if (aiRes) return addSecurityHeaders(aiRes, request);
+      }
+
+      if (path === '/api/health' || path.startsWith('/api/health/')) {
+        const healthRes = await handleHealthRoutes(request, reqEnv, url, session);
+        if (healthRes) return addSecurityHeaders(healthRes, request);
       }
 
       // 写操作严格要求登录认证

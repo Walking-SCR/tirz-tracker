@@ -218,6 +218,18 @@ test('V6 interaction DOM IDs and structures are present', () => {
   assert.match(html, /正在绑定/, 'Bootstrap action should show a visible pending state');
 });
 
+test('health page, report trends, plans, and private iPhone calendar controls are present once', () => {
+  const html = fs.readFileSync('index.html', 'utf8');
+  const requiredIds = [
+    'btnNavHealth', 'healthPage', 'healthTodayPlan', 'btnConfigureHealthPlans',
+    'healthMetricCharts', 'btnAddHealthReport', 'btnAddHealthCalendar',
+    'healthReportsList', 'btnConfirmCalendarSubscription', 'btnStopCalendarSync'
+  ];
+  for (const id of requiredIds) assert.ok(html.includes(`id="${id}"`), `Expected id="${id}"`);
+  assert.equal((html.match(/document\.addEventListener\('DOMContentLoaded'/g) || []).length, 1, 'App initialization must only run once');
+  assert.equal((html.match(/function updateHealthMetric\(/g) || []).length, 1, 'Health metric action must only be declared once');
+});
+
 function trendPreviewHarness(records, range = 'all') {
   const html = fs.readFileSync('index.html', 'utf8');
   const mainScript = [...html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/g)]
@@ -317,9 +329,9 @@ test('trend goal gap handles no data, reaching the goal and going below it', () 
   }
 });
 
-test('Service Worker cache version is v6.0 in sw.js and public/sw.js', () => {
+test('Service Worker cache version is v6.1 in sw.js and public/sw.js', () => {
   const rootSw = fs.readFileSync('sw.js', 'utf-8');
   const publicSw = fs.readFileSync('public/sw.js', 'utf-8');
-  assert.ok(rootSw.includes('tirz-tracker-v6.0'), 'sw.js must contain cache v6.0');
-  assert.ok(publicSw.includes('tirz-tracker-v6.0'), 'public/sw.js must contain cache v6.0');
+  assert.ok(rootSw.includes('tirz-tracker-v6.1'), 'sw.js must contain cache v6.1');
+  assert.ok(publicSw.includes('tirz-tracker-v6.1'), 'public/sw.js must contain cache v6.1');
 });

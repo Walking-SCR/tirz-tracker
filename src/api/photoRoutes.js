@@ -5,10 +5,12 @@ export async function handlePhotoRoutes(request, env, url, session) {
   const method = request.method;
 
   // 匹配 /api/photos/2026/09/wt-xxxx.webp 或 /api/photos/images/2026/09/wt-xxxx.webp
-  const photoMatch = path.match(/^\/api\/photos\/(?:images\/)?(\d{4})\/(\d{2})\/([a-zA-Z0-9_.-]+)$/);
+  const photoMatch = path.match(/^\/api\/photos\/(?:(health)\/)?(?:images\/)?(\d{4})\/(\d{2})\/([a-zA-Z0-9_.-]+)$/);
   if (photoMatch && (method === 'GET' || method === 'HEAD')) {
-    const [, yyyy, mm, filename] = photoMatch;
-    const photoPath = `images/${yyyy}/${mm}/${filename}`;
+    const [, healthRoot, yyyy, mm, filename] = photoMatch;
+    const photoPath = healthRoot
+      ? ['images', 'health', yyyy, mm, filename].join('/')
+      : ['images', yyyy, mm, filename].join('/');
 
     if (!env.GITHUB_TOKEN) {
       return new Response('GitHub token not configured', { status: 503 });
@@ -19,9 +21,10 @@ export async function handlePhotoRoutes(request, env, url, session) {
       if (!result) {
         const baseName = filename.replace(/\.[a-z0-9]+$/i, '');
         const currentExt = (filename.match(/\.[a-z0-9]+$/i)?.[0] || '').toLowerCase();
-        const altExts = ['.jpg', '.png', '.webp', '.jpeg', '.heic'].filter(ext => ext !== currentExt);
+        const altExts = ['.jpg', '.png', '.webp', '.jpeg', '.heic', '.heif'].filter(ext => ext !== currentExt);
         for (const ext of altExts) {
-          result = await fetchPrivatePhoto(env, `images/${yyyy}/${mm}/${baseName}${ext}`);
+          const altPath = healthRoot ? ['images', 'health', yyyy, mm, baseName + ext].join('/') : ['images', yyyy, mm, baseName + ext].join('/');
+          result = await fetchPrivatePhoto(env, altPath);
           if (result) break;
         }
       }

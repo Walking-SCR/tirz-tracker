@@ -23,7 +23,6 @@
   <script src="https://unpkg.com/@phosphor-icons/web"></script>
   <!-- iOS 照片上传的 HEIC/HEIF 回退转换库 -->
   <script src="vendor/heic2any.min.js"></script>
-
   <script>
     tailwind.config = {
       theme: {
@@ -127,6 +126,31 @@
     .trend-chart-plot { flex: 1; min-height: 0; position: relative; }
     #weightChartCanvas { touch-action: pan-y; }
     #weightChartCanvas:focus-visible { outline: 1px solid #27F2C3; outline-offset: 3px; border-radius: 6px; }
+    .app-bottom-nav {
+      position: fixed;
+      inset: auto 0 0;
+      z-index: 40;
+      background: rgba(6, 17, 31, 0.96);
+      border-top: 1px solid rgba(145, 166, 190, 0.18);
+      padding: 6px 16px max(6px, env(safe-area-inset-bottom, 0px));
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+    }
+    .app-bottom-nav__inner { width: min(100%, 448px); margin: 0 auto; display: grid; grid-template-columns: 1fr 1fr; }
+    .app-bottom-nav__item { min-height: 56px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; color: #93A4B8; font: 12px ui-monospace, monospace; }
+    .app-bottom-nav__item[aria-current="page"] { color: #27F2C3; }
+    .app-bottom-nav__item i { font-size: 21px; }
+    #weightPage main, #healthPage { padding-bottom: calc(76px + env(safe-area-inset-bottom, 0px)); }
+    .health-page-header { max-width: 448px; margin: 0 auto; padding: 16px 16px 6px; }
+    .health-page-content { max-width: 448px; margin: 0 auto; padding: 8px 16px calc(88px + env(safe-area-inset-bottom, 0px)); display: flex; flex-direction: column; gap: 18px; }
+    .health-section { border-top: 1px solid rgba(145, 166, 190, 0.16); padding-top: 14px; }
+    .health-task-row { min-height: 52px; display: grid; grid-template-columns: 58px minmax(0, 1fr) auto; align-items: center; gap: 8px; border-bottom: 1px solid rgba(145, 166, 190, 0.12); }
+    .health-chart-wrap { height: 148px; position: relative; }
+    .health-preview-badge { display: none; }
+    body.health-preview-mode .health-preview-badge { display: inline-flex; }
+    .health-modal { width: min(100%, 420px); max-height: min(88dvh, 780px); display: flex; flex-direction: column; background: #0B1A2A; border: 1px solid rgba(145, 166, 190, 0.25); border-radius: 20px; overflow: hidden; box-shadow: 0 20px 60px rgba(0,0,0,.78); }
+    .health-modal__body { overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 16px 18px; }
+    .health-form-control { width: 100%; min-height: 44px; border-radius: 12px; border: 1px solid rgba(145,166,190,.28); background: rgba(3,10,18,.75); color: #F4F7FB; padding: 10px 12px; font: 14px ui-monospace, monospace; }
 
     .timeline-viewport {
       overflow: hidden;
@@ -340,6 +364,7 @@
 </head>
 <body class="antialiased selection:bg-cyberNeon/30">
 
+  <div id="weightPage">
   <!-- 01 顶栏 Header -->
   <header id="appHeader" class="px-4 transition-all app-header">
     <div class="max-w-md mx-auto flex items-center justify-between">
@@ -512,6 +537,195 @@
     </section>
 
   </main>
+  </div>
+
+  <section id="healthPage" class="hidden" aria-hidden="true">
+    <header class="health-page-header">
+      <div class="flex items-center justify-between">
+        <div>
+          <h1 class="text-2xl font-black tracking-wider text-white leading-none">健康管理</h1>
+          <p id="healthTodayDate" class="text-sm font-mono text-cyberTextDim mt-1"></p>
+          <span class="health-preview-badge mt-1 rounded-full bg-amber-300/10 px-2 py-0.5 text-[10px] text-amber-300">本地示例数据 · 不会同步</span>
+        </div>
+        <button id="btnHealthCalendarSettings" type="button" class="px-3 py-2 rounded-xl border border-[rgba(145,166,190,0.2)] text-cyberTextDim text-xs font-mono inline-flex items-center gap-1.5" aria-label="日历与指标管理">
+          <i class="ph-bold ph-calendar-blank text-base"></i><span>日历设置</span>
+        </button>
+      </div>
+    </header>
+
+    <main class="health-page-content">
+      <section class="glass-surface rounded-2xl p-3 flex items-center justify-between gap-3">
+        <div class="min-w-0">
+          <div id="healthCalendarStatus" class="text-sm font-bold text-white">日历尚未添加</div>
+          <p id="healthCalendarHint" class="text-[11px] text-cyberTextDim mt-1">添加专用健康日历，事件提醒由 iPhone 日历管理</p>
+        </div>
+        <button id="btnAddHealthCalendar" type="button" class="flex-shrink-0 px-3 py-2 rounded-full border border-cyberNeon/60 text-cyberNeon text-xs font-mono font-bold">添加到日历</button>
+      </section>
+
+      <section id="healthTodaySection" class="space-y-2">
+        <div class="flex items-center justify-between px-1">
+          <h2 class="home-section-title font-bold text-white">今日计划</h2>
+          <span id="healthTodayProgress" class="text-xs font-mono text-cyberTextDim">尚未设置提醒</span>
+        </div>
+        <div id="healthTodayPlan"></div>
+        <button id="btnConfigureHealthPlans" type="button" class="w-full min-h-12 rounded-xl bg-cyberNeon text-[#06111F] font-mono font-bold text-sm">设置现有用药时间</button>
+      </section>
+
+      <section id="healthTrendSection" class="health-section space-y-3">
+        <div class="flex items-center justify-between">
+          <h2 class="home-section-title font-bold text-white">肝功能趋势</h2>
+          <div class="flex gap-2">
+            <button id="btnManageHealthMetrics" type="button" class="px-2.5 py-2 rounded-lg text-cyberTextDim text-xs font-mono">指标管理</button>
+            <button id="btnAddHealthReport" type="button" class="px-3 py-2 rounded-full border border-cyberNeon/55 text-cyberNeon text-xs font-mono font-bold">+ 添加检查</button>
+          </div>
+        </div>
+        <p id="healthSourceOrderNotice" class="hidden rounded-lg bg-amber-400/10 text-amber-300 text-xs leading-relaxed px-3 py-2"></p>
+        <div id="healthMetricCharts" class="space-y-4"></div>
+        <p id="healthTrendFootnote" class="px-1 text-[11px] leading-relaxed text-cyberTextDim"></p>
+      </section>
+
+      <section class="health-section space-y-2">
+        <div class="flex items-center justify-between px-1">
+          <h2 class="home-section-title font-bold text-white">检查记录</h2>
+          <span id="healthReportCount" class="text-xs font-mono text-cyberTextDim">共0张来源</span>
+        </div>
+        <div id="healthReportsList" class="divide-y divide-[rgba(145,166,190,0.14)]"></div>
+        <div id="healthReportsEmpty" class="hidden rounded-xl border border-[rgba(145,166,190,0.18)] p-5 text-center text-sm text-cyberTextDim">还没有检查记录，添加报告图片或手动录入。</div>
+      </section>
+    </main>
+  </section>
+
+  <nav id="appBottomNav" class="app-bottom-nav" aria-label="主导航">
+    <div class="app-bottom-nav__inner">
+      <button id="btnNavWeight" class="app-bottom-nav__item" type="button" aria-current="page">
+        <i class="ph-bold ph-scales"></i><span>体重</span>
+      </button>
+      <button id="btnNavHealth" class="app-bottom-nav__item" type="button">
+        <i class="ph-bold ph-heartbeat"></i><span>健康</span>
+      </button>
+    </div>
+  </nav>
+
+  <input id="healthReportFileInput" type="file" class="hidden" accept="image/*,.heic,.heif">
+
+  <div id="healthPlanModal" class="app-overlay hidden">
+    <section class="health-modal" role="dialog" aria-modal="true" aria-labelledby="healthPlanTitle">
+      <header class="px-5 py-4 border-b border-[rgba(145,166,190,0.18)] flex items-center justify-between">
+        <h2 id="healthPlanTitle" class="text-base font-bold text-white">设置现有用药计划</h2>
+        <button id="btnCloseHealthPlan" class="w-9 h-9 rounded-lg bg-white/5 text-neutral-300" type="button" aria-label="关闭">×</button>
+      </header>
+      <div class="health-modal__body space-y-4">
+        <p class="text-xs text-amber-300 leading-relaxed">按你现有医嘱填写时间；每日三次不会自动换算成每8小时。这里仅安排提醒，不建议增减或补服药物。</p>
+        <div class="space-y-2">
+          <h3 class="text-sm font-bold text-white">口服用药 · 每日3次</h3>
+          <div class="grid grid-cols-3 gap-2">
+            <label class="text-[11px] text-cyberTextDim">第1次<input id="healthOralTime1" type="time" class="health-form-control mt-1"></label>
+            <label class="text-[11px] text-cyberTextDim">第2次<input id="healthOralTime2" type="time" class="health-form-control mt-1"></label>
+            <label class="text-[11px] text-cyberTextDim">第3次<input id="healthOralTime3" type="time" class="health-form-control mt-1"></label>
+          </div>
+          <label class="block text-xs text-cyberTextDim">首次提醒日期<input id="healthOralStartDate" type="date" class="health-form-control mt-1"></label>
+        </div>
+        <div class="space-y-2">
+          <h3 class="text-sm font-bold text-white">晚间外用药 · 每晚1次</h3>
+          <div class="grid grid-cols-2 gap-2">
+            <label class="text-[11px] text-cyberTextDim">提醒时间<input id="healthTopicalTime" type="time" class="health-form-control mt-1"></label>
+            <label class="text-[11px] text-cyberTextDim">首次日期<input id="healthTopicalStartDate" type="date" class="health-form-control mt-1"></label>
+          </div>
+        </div>
+        <div class="space-y-2">
+          <h3 class="text-sm font-bold text-white">涂甲油 · 每3天1次</h3>
+          <div class="grid grid-cols-2 gap-2">
+            <label class="text-[11px] text-cyberTextDim">提醒时间<input id="healthLacquerTime" type="time" class="health-form-control mt-1"></label>
+            <label class="text-[11px] text-cyberTextDim">首次计划日期<input id="healthLacquerStartDate" type="date" class="health-form-control mt-1"></label>
+          </div>
+          <p class="text-[11px] text-cyberTextDim">周期按首次确认日期固定每3天生成；漏记不会自动顺延。</p>
+        </div>
+      </div>
+      <footer class="p-4 border-t border-[rgba(145,166,190,0.18)]">
+        <button id="btnSaveHealthPlan" type="button" class="w-full min-h-12 rounded-xl bg-cyberNeon text-[#06111F] font-bold">保存计划</button>
+      </footer>
+    </section>
+  </div>
+
+  <div id="healthReportModal" class="app-overlay hidden">
+    <section class="health-modal" role="dialog" aria-modal="true" aria-labelledby="healthReportTitle">
+      <header class="px-5 py-4 border-b border-[rgba(145,166,190,0.18)] flex items-center justify-between">
+        <h2 id="healthReportTitle" class="text-base font-bold text-white">添加检查</h2>
+        <button id="btnCloseHealthReport" class="w-9 h-9 rounded-lg bg-white/5 text-neutral-300" type="button" aria-label="关闭">×</button>
+      </header>
+      <div class="health-modal__body space-y-3">
+        <button id="btnPickHealthReport" type="button" class="w-full min-h-16 rounded-xl border border-[rgba(145,166,190,0.24)] bg-black/20 flex items-center justify-center gap-2 text-sm text-cyberNeon">
+          <i class="ph-bold ph-image text-xl"></i><span>拍照或从相册选择报告</span>
+        </button>
+        <img id="healthReportPreview" class="hidden max-h-44 w-full object-contain rounded-xl bg-black/30" alt="检查报告图片预览">
+        <p id="healthOCRStatus" class="min-h-5 text-xs text-cyberTextDim" aria-live="polite">识别结果需逐项核对后才会保存。</p>
+        <label class="block text-xs text-cyberTextDim">日期类型
+          <select id="healthReportDateType" class="health-form-control mt-1">
+            <option value="">请选择报告中的日期类型</option><option value="specimen">采样日期</option><option value="examination">检查日期</option><option value="report">报告日期</option><option value="unknown">暂不确定</option>
+          </select>
+        </label>
+        <label class="block text-xs text-cyberTextDim">确认用于趋势的日期
+          <input id="healthReportDate" type="date" class="health-form-control mt-1">
+        </label>
+        <div id="healthDateCandidates" class="hidden flex flex-wrap gap-2"></div>
+        <label class="flex items-start gap-2 text-xs text-cyberTextDim leading-relaxed">
+          <input id="healthDateConfirmed" type="checkbox" class="mt-0.5 accent-cyan-400">
+          <span>我已核对日期类型和日期，可用于检查趋势</span>
+        </label>
+        <p class="text-[11px] leading-relaxed text-amber-300">不使用相册日期、上传时间或当前日期补全年份。选择“暂不确定”时，本条不会进入时间趋势。</p>
+        <div id="healthOCRFields" class="space-y-3"></div>
+        <label class="block text-xs text-cyberTextDim">备注（可选）
+          <input id="healthReportRemark" maxlength="120" class="health-form-control mt-1" placeholder="只记录报告来源等必要信息">
+        </label>
+        <p id="healthReportDuplicateNotice" class="hidden rounded-lg bg-amber-400/10 px-3 py-2 text-xs text-amber-300"></p>
+      </div>
+      <footer class="p-4 border-t border-[rgba(145,166,190,0.18)] grid grid-cols-2 gap-2">
+        <button id="btnCancelHealthReport" type="button" class="min-h-12 rounded-xl bg-white/5 text-neutral-300">取消</button>
+        <button id="btnSaveHealthReport" type="button" class="min-h-12 rounded-xl bg-cyberNeon text-[#06111F] font-bold">确认并保存本条</button>
+      </footer>
+    </section>
+  </div>
+
+  <div id="healthManageModal" class="app-overlay hidden">
+    <section class="health-modal" role="dialog" aria-modal="true" aria-labelledby="healthManageTitle">
+      <header class="px-5 py-4 border-b border-[rgba(145,166,190,0.18)] flex items-center justify-between">
+        <h2 id="healthManageTitle" class="text-base font-bold text-white">日历与指标管理</h2>
+        <button id="btnCloseHealthManage" class="w-9 h-9 rounded-lg bg-white/5 text-neutral-300" type="button" aria-label="关闭">×</button>
+      </header>
+      <div class="health-modal__body space-y-5">
+        <section class="space-y-3">
+          <div>
+            <h3 class="text-sm font-bold text-white">iPhone日历</h3>
+            <p id="healthCalendarManageStatus" class="text-xs text-cyberTextDim mt-1">未添加 · 需要本人在iPhone确认订阅</p>
+          </div>
+          <a id="healthCalendarSubscribeLink" href="#" class="hidden w-full min-h-12 rounded-xl bg-cyberNeon text-[#06111F] font-bold flex items-center justify-center">添加到iPhone日历</a>
+          <button id="btnConfirmCalendarSubscription" type="button" class="hidden w-full min-h-11 rounded-xl border border-cyberNeon/40 text-cyberNeon text-sm">我已在iPhone完成添加</button>
+          <button id="btnCopyCalendarLink" type="button" class="hidden w-full min-h-11 rounded-xl border border-[rgba(145,166,190,0.25)] text-neutral-300 text-sm">复制日历订阅链接</button>
+          <button id="btnStopCalendarSync" type="button" class="hidden w-full min-h-11 rounded-xl border border-cyberDanger/40 text-cyberDanger text-sm">停止后续同步</button>
+          <p class="text-[11px] leading-relaxed text-amber-300">取消手机中已缓存的日历事件，需要在iPhone日历列表中手动“取消订阅”。停止同步不保证立即移除已缓存事件。</p>
+          <p class="text-[11px] text-cyberTextDim">日历提醒是否送达取决于iPhone的日历事件提醒、网络与系统通知设置；订阅链接只包含通用提醒文案。</p>
+        </section>
+        <section class="health-section space-y-3">
+          <div class="flex justify-between items-center">
+            <h3 class="text-sm font-bold text-white">指标管理</h3>
+            <button id="btnAddHealthMetric" type="button" class="text-cyberNeon text-xs">+ 添加指标</button>
+          </div>
+          <div id="healthMetricManagerList" class="divide-y divide-[rgba(145,166,190,0.14)]"></div>
+          <div id="healthHiddenMetrics" class="hidden pt-2 space-y-1"></div>
+          <form id="healthMetricAddForm" class="hidden rounded-xl border border-[rgba(145,166,190,0.18)] p-3 space-y-2">
+            <label class="block text-xs text-cyberTextDim">指标名称<input id="healthMetricNewName" maxlength="50" class="health-form-control mt-1" placeholder="按报告填写"></label>
+            <label class="block text-xs text-cyberTextDim">单位<input id="healthMetricNewUnit" maxlength="20" class="health-form-control mt-1" placeholder="按报告填写"></label>
+            <div class="grid grid-cols-2 gap-2"><button id="btnCancelAddHealthMetric" type="button" class="min-h-10 rounded-lg bg-white/5 text-neutral-300">取消</button><button type="submit" class="min-h-10 rounded-lg bg-cyberNeon text-[#06111F] font-bold">保存指标</button></div>
+          </form>
+          <p id="healthMetricDeleteImpact" class="text-[11px] leading-relaxed text-cyberTextDim">删除指标会删除该指标在当前检查记录中的数值，不影响其他指标和日历。</p>
+        </section>
+      </div>
+      <footer class="p-4 border-t border-[rgba(145,166,190,0.18)]">
+        <button id="btnCloseHealthManageFooter" type="button" class="w-full min-h-11 rounded-xl bg-white/5 text-neutral-300">完成</button>
+      </footer>
+    </section>
+  </div>
+
 
   <!-- 隐藏文件输入控件：相机拍照与系统相册 -->
   <input type="file" id="scaleFileInput" accept="image/*,.heic,.heif" class="hidden">
@@ -1173,6 +1387,7 @@
     const STORAGE_KEY_DOSES = 'tirzepatide_doses_v3';
     const STORAGE_KEY_SCHEDULE = 'tirzepatide_schedule_v1';
     const STORAGE_KEY_TIMELINE_VISIBILITY = 'tirz_timeline_visible_v1';
+    const STORAGE_KEY_HEALTH = 'tirz_health_v1';
 
     function readTimelineVisibilityPreference() {
       try {
@@ -1456,6 +1671,91 @@
         return true;
       },
 
+      async getHealth() {
+        const res = await fetch(API_BASE + '/api/health', { credentials: 'include', headers: this.getCustomHeaders() });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.message || data.error || '读取健康记录失败');
+        return data;
+      },
+
+      async saveHealth(action, payload) {
+        const res = await fetch(API_BASE + '/api/health', {
+          method: 'PUT',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json', ...this.getCustomHeaders() },
+          body: JSON.stringify({ ...payload, action })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          const error = new Error(data.message || data.error || '健康数据保存失败');
+          error.status = res.status;
+          error.code = data.error;
+          throw error;
+        }
+        return data;
+      },
+
+      async healthMutation(path, method, payload) {
+        const res = await fetch(API_BASE + '/api/health' + path, {
+          method,
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json', ...this.getCustomHeaders() },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          const error = new Error(data.message || data.error || '健康数据保存失败');
+          error.status = res.status;
+          error.code = data.error;
+          throw error;
+        }
+        return data;
+      },
+
+      async analyzeHealthReport(imageBase64, signal) {
+        const res = await fetch(API_BASE + '/api/health/analyze', {
+          method: 'POST',
+          credentials: 'include',
+          signal,
+          headers: { 'Content-Type': 'application/json', ...this.getCustomHeaders() },
+          body: JSON.stringify({ imageBase64 })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          const error = new Error(data.message || data.error || '报告识别失败');
+          error.status = res.status;
+          error.code = data.error;
+          throw error;
+        }
+        return data;
+      },
+
+      async getHealthCalendarLink() {
+        const res = await fetch(API_BASE + '/api/health/calendar-link', { credentials: 'include', headers: this.getCustomHeaders() });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.message || data.error || '日历订阅链接暂不可用');
+        return data;
+      },
+
+      async healthRequest(path = '', method = 'GET', payload = null) {
+        const res = await fetch(API_BASE + '/api/health' + path, {
+          method,
+          credentials: 'include',
+          headers: payload ? { 'Content-Type': 'application/json', ...this.getCustomHeaders() } : this.getCustomHeaders(),
+          body: payload ? JSON.stringify(payload) : undefined
+        });
+        const data = method === 'GET' && path.endsWith('.ics')
+          ? await res.text()
+          : await res.json().catch(() => ({}));
+        if (!res.ok) {
+          const error = new Error(data.message || data.error || '健康数据请求失败');
+          error.status = res.status;
+          error.code = data.error;
+          throw error;
+        }
+        return data;
+      },
+
       resolvePhotoUrl(photoStr) {
         if (!photoStr) return '';
         if (photoStr.startsWith('data:') || photoStr.startsWith('blob:') || photoStr.startsWith('<svg') || photoStr.startsWith('http://') || photoStr.startsWith('https://')) {
@@ -1471,6 +1771,19 @@
     // =========================================================================
     let weightRecords = [];
     let doseRecords = [];
+    let healthDocument = null;
+    let healthChartInstances = {};
+    let healthSelectedReportPhoto = null;
+    let healthModalConfirmAction = null;
+    let healthSourceImageBase64 = null;
+    let healthRecognizedExtraction = null;
+    let healthDeletePending = null;
+    let healthPendingTaskActions = [];
+    let activeHealthTab = 'weight';
+    let healthCalendarLink = null;
+    let healthOcrAbortController = null;
+    let healthEditingReportId = null;
+    let authInitializationComplete = false;
     let treatmentSchedule = {
       intervalDays: 7,
       amount: '2.5 mg',
@@ -1704,6 +2017,963 @@
       } catch (e) {}
     }
 
+    function createEmptyHealthState() {
+      return {
+        schemaVersion: 1, revision: 0, timeZone: 'Asia/Shanghai',
+        indicators: [
+          { id: 'alt', code: 'ALT', label: 'ALT · 谷丙转氨酶', unit: 'U/L', visible: true },
+          { id: 'ast', code: 'AST', label: 'AST · 谷草转氨酶', unit: 'U/L', visible: true }
+        ],
+        reports: [],
+        medicationPlans: [
+          { id: 'oral', name: '口服用药', cadence: 'daily-slots', frequencyPerDay: 3, times: [], startDate: null, active: true },
+          { id: 'topical', name: '晚间外用药', cadence: 'daily', frequencyPerDay: 1, times: [], startDate: null, active: true },
+          { id: 'nail-lacquer', name: '涂甲油', cadence: 'interval-days', intervalDays: 3, time: null, startDate: null, active: true }
+        ],
+        taskCompletions: [],
+        calendar: { active: true, version: 1, userConfirmedAt: null }
+      };
+    }
+
+    function getHealthDateKey(date = new Date()) {
+      const parts = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit'
+      }).formatToParts(date);
+      const values = Object.fromEntries(parts.map(part => [part.type, part.value]));
+      return values.year + '-' + values.month + '-' + values.day;
+    }
+
+    function getHealthClock(date = new Date()) {
+      return new Intl.DateTimeFormat('en-GB', {
+        timeZone: 'Asia/Shanghai', hour: '2-digit', minute: '2-digit', hourCycle: 'h23'
+      }).format(date);
+    }
+
+    function healthDayDifference(first, second) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(first || '') || !/^\d{4}-\d{2}-\d{2}$/.test(second || '')) return null;
+      return Math.round((Date.parse(first + 'T12:00:00Z') - Date.parse(second + 'T12:00:00Z')) / 86400000);
+    }
+
+    function getHealthPlanReady(document = healthDocument) {
+      const plans = document?.medicationPlans || [];
+      const oral = plans.find(plan => plan.id === 'oral');
+      const topical = plans.find(plan => plan.id === 'topical');
+      const lacquer = plans.find(plan => plan.id === 'nail-lacquer');
+      return Array.isArray(oral?.times) && oral.times.length === 3
+        && oral.times.every(time => /^\d{2}:\d{2}$/.test(time)) && !!oral.startDate
+        && Array.isArray(topical?.times) && topical.times.length === 1
+        && /^\d{2}:\d{2}$/.test(topical.times[0] || '') && !!topical.startDate
+        && lacquer?.intervalDays === 3 && /^\d{2}:\d{2}$/.test(lacquer.time || '') && !!lacquer.startDate;
+    }
+
+    function saveHealthCache() {
+      if (!healthDocument) return;
+      try { localStorage.setItem(STORAGE_KEY_HEALTH, JSON.stringify(healthDocument)); } catch (e) {}
+    }
+
+    async function loadHealthPageData() {
+      if (CloudStorageAdapter.sessionState.isLocalDemo) {
+        try {
+          healthDocument = window.__HEALTH_DESIGN_PREVIEW__
+            ? JSON.parse(JSON.stringify(window.__HEALTH_DESIGN_PREVIEW__))
+            : JSON.parse(localStorage.getItem(STORAGE_KEY_HEALTH) || 'null') || createEmptyHealthState();
+        } catch (e) {
+          healthDocument = createEmptyHealthState();
+        }
+        document.body.classList.add('health-preview-mode');
+        renderHealthPage();
+        return;
+      }
+      try {
+        healthDocument = await CloudStorageAdapter.getHealth();
+        document.body.classList.remove('health-preview-mode');
+        saveHealthCache();
+        renderHealthPage();
+      } catch (error) {
+        let cached = null;
+        try { cached = JSON.parse(localStorage.getItem(STORAGE_KEY_HEALTH) || 'null'); } catch (e) {}
+        if (cached) {
+          healthDocument = cached;
+          renderHealthPage();
+          setHealthCalendarStatus('离线缓存 · 未同步', '当前显示本机缓存；检查记录或计划修改尚未确认云端保存。');
+        } else {
+          healthDocument = null;
+          renderHealthPage();
+          setHealthCalendarStatus('健康数据暂不可读取', '请确认已登录且网络可用后重试。');
+        }
+        console.warn('Health data load failed:', error?.code || error?.status || 'request_failed');
+      }
+    }
+
+    function setHealthCalendarStatus(title, detail) {
+      const titleElement = document.getElementById('healthCalendarStatus');
+      const detailElement = document.getElementById('healthCalendarHint');
+      if (titleElement) titleElement.textContent = title;
+      if (detailElement) detailElement.textContent = detail;
+    }
+
+    async function persistHealthAction(action, payload = {}) {
+      if (!healthDocument) throw new Error('健康数据尚未加载');
+      if (CloudStorageAdapter.sessionState.isLocalDemo) {
+        if (action === 'save-plans') healthDocument.medicationPlans = payload.medicationPlans;
+        else if (action === 'confirm-calendar') healthDocument.calendar.userConfirmedAt = new Date().toISOString();
+        else if (action === 'stop-calendar') { healthDocument.calendar.active = false; healthDocument.calendar.version += 1; healthDocument.calendar.userConfirmedAt = null; }
+        else if (action === 'resume-calendar') { healthDocument.calendar.active = true; healthDocument.calendar.version += 1; }
+        healthDocument.revision = (healthDocument.revision || 0) + 1;
+        saveHealthCache();
+        renderHealthPage();
+        return { success: true };
+      }
+      const result = await CloudStorageAdapter.saveHealth(action, { ...payload, expectedRevision: healthDocument.revision || 0 });
+      healthDocument = await CloudStorageAdapter.getHealth();
+      saveHealthCache();
+      renderHealthPage();
+      return result;
+    }
+
+    async function sendHealthMutation(path, method, payload) {
+      if (CloudStorageAdapter.sessionState.isLocalDemo) {
+        if (path === '/tasks' && method === 'POST') {
+          const completionId = payload.planId + ':' + payload.date + ':' + payload.time;
+          healthDocument.taskCompletions = (healthDocument.taskCompletions || []).filter(task => task.id !== completionId);
+          if (payload.action !== 'undo') healthDocument.taskCompletions.push({
+            id: completionId, planId: payload.planId, date: payload.date, time: payload.time,
+            status: payload.action === 'complete' ? 'done' : 'snoozed',
+            snoozedUntil: payload.action === 'snooze' ? new Date(Date.now() + Number(payload.minutes) * 60000).toISOString() : null
+          });
+        }
+        healthDocument.revision = (healthDocument.revision || 0) + 1;
+        saveHealthCache();
+        renderHealthPage();
+        return { success: true };
+      }
+      const result = await CloudStorageAdapter.healthMutation(path, method, {
+        ...payload, expectedRevision: healthDocument.revision || 0
+      });
+      healthDocument = await CloudStorageAdapter.getHealth();
+      saveHealthCache();
+      renderHealthPage();
+      return result;
+    }
+
+    function getHealthTasksForToday() {
+      if (!healthDocument || !getHealthPlanReady()) return [];
+      const date = getHealthDateKey();
+      const now = getHealthClock();
+      const tasks = [];
+      const plans = healthDocument.medicationPlans || [];
+      const completed = healthDocument.taskCompletions || [];
+      const add = (plan, time, id) => {
+        if (!plan || plan.active === false || date < plan.startDate || time > now) return;
+        const prior = completed.find(item => item.id === id);
+        tasks.push({
+          id, planId: plan.id, time, title: plan.name,
+          status: prior?.status === 'done' ? 'done' : prior?.status === 'snoozed' ? 'snoozed' : 'pending'
+        });
+      };
+      const oral = plans.find(plan => plan.id === 'oral');
+      (oral?.times || []).forEach(time => add(oral, time, 'oral:' + date + ':' + time));
+      const topical = plans.find(plan => plan.id === 'topical');
+      (topical?.times || []).forEach(time => add(topical, time, 'topical:' + date + ':' + time));
+      const lacquer = plans.find(plan => plan.id === 'nail-lacquer');
+      const lacquerElapsed = lacquer?.startDate ? healthDayDifference(date, lacquer.startDate) : null;
+      if (lacquer && lacquerElapsed !== null && lacquerElapsed >= 0 && lacquerElapsed % 3 === 0) {
+        add({ ...lacquer, times: [lacquer.time] }, lacquer.time, 'nail-lacquer:' + date + ':' + lacquer.time);
+      }
+      return tasks.sort((a, b) => a.time.localeCompare(b.time));
+    }
+
+    function appendHealthButton(parent, text, className, onClick, disabled = false) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = className;
+      button.textContent = text;
+      button.disabled = disabled;
+      button.onclick = onClick;
+      parent.appendChild(button);
+      return button;
+    }
+
+    function renderHealthTodayPlan() {
+      const root = document.getElementById('healthTodayPlan');
+      const progress = document.getElementById('healthTodayProgress');
+      const setupButton = document.getElementById('btnConfigureHealthPlans');
+      if (!root || !progress || !setupButton) return;
+      root.replaceChildren();
+      const configured = getHealthPlanReady();
+      setupButton.classList.toggle('hidden', configured);
+      if (!configured) {
+        progress.textContent = '提醒时间尚未设置';
+        const note = document.createElement('div');
+        note.className = 'glass-surface rounded-xl p-4 text-sm text-cyberTextDim leading-relaxed';
+        note.textContent = '按你现有的用药计划设置三个口服时点、晚间外用药时间和甲油首次计划日期。未设置前不会生成虚构待办或日历提醒。';
+        root.appendChild(note);
+        return;
+      }
+      const tasks = getHealthTasksForToday();
+      const done = tasks.filter(task => task.status === 'done').length;
+      progress.textContent = '已记录 ' + done + '/' + tasks.length;
+      if (!tasks.length) {
+        const empty = document.createElement('div');
+        empty.className = 'glass-surface rounded-xl p-4 text-sm text-cyberTextDim';
+        empty.textContent = '今天没有到点的任务。已按设置时间和甲油周期计算。';
+        root.appendChild(empty);
+        return;
+      }
+      const list = document.createElement('div');
+      list.className = 'glass-surface rounded-xl px-3';
+      tasks.forEach(task => {
+        const row = document.createElement('div');
+        row.className = 'health-task-row';
+        const time = document.createElement('span');
+        time.className = 'font-mono text-sm ' + (task.status === 'pending' ? 'text-cyberNeon' : 'text-cyberTextDim');
+        time.textContent = task.time;
+        const title = document.createElement('span');
+        title.className = 'text-sm font-semibold text-white min-w-0 truncate';
+        title.textContent = task.title;
+        const action = document.createElement('div');
+        action.className = 'flex items-center gap-2';
+        if (task.status === 'done') {
+          appendHealthButton(action, '已记录 · 撤销', 'text-xs text-cyberNeon min-h-11 px-2', async () => {
+            try { await sendHealthMutation('/tasks', 'POST', { planId: task.planId, date: getHealthDateKey(), time: task.time, action: 'undo' }); }
+            catch (error) { showToast(error.message, 'error'); }
+          });
+        } else {
+          appendHealthButton(action, '已做', 'min-h-11 px-3 rounded-lg bg-cyberNeon text-[#06111F] text-xs font-bold', async () => {
+            try { await sendHealthMutation('/tasks', 'POST', { planId: task.planId, date: getHealthDateKey(), time: task.time, action: 'complete' }); }
+            catch (error) { showToast(error.message, 'error'); }
+          });
+          appendHealthButton(action, '稍后', 'min-h-11 px-2 rounded-lg border border-[rgba(145,166,190,.2)] text-cyberTextDim text-xs', async () => {
+            try { await sendHealthMutation('/tasks', 'POST', { planId: task.planId, date: getHealthDateKey(), time: task.time, action: 'snooze', minutes: 10 }); }
+            catch (error) { showToast(error.message, 'error'); }
+          });
+        }
+        row.append(time, title, action);
+        list.appendChild(row);
+      });
+      root.appendChild(list);
+    }
+
+    function healthSourceDateLabel(report) {
+      if (report.dateConfirmed && (report.examDate || report.reportDate)) {
+        const date = report.examDate || report.reportDate;
+        return (date || '').slice(5).replace('-', '/') + (report.dateType === 'report' ? ' 报告日' : ' 检查日');
+      }
+      if (report.reportDate) return '报告日 ' + report.reportDate + ' · 检查日待确认';
+      if (report.galleryDateHint) return '相册标注 ' + report.galleryDateHint + ' · 不是检查日期';
+      return '日期待核对';
+    }
+
+    function renderHealthReports() {
+      const list = document.getElementById('healthReportsList');
+      const empty = document.getElementById('healthReportsEmpty');
+      const count = document.getElementById('healthReportCount');
+      const notice = document.getElementById('healthSourceOrderNotice');
+      const reports = Array.isArray(healthDocument?.reports) ? [...healthDocument.reports].sort((a, b) => a.sourceOrder - b.sourceOrder) : [];
+      if (count) count.textContent = '共 ' + reports.length + ' 条来源';
+      if (empty) empty.classList.toggle('hidden', reports.length > 0);
+      if (list) list.replaceChildren();
+      const unconfirmed = reports.filter(report => !report.dateConfirmed).length;
+      if (notice) {
+        notice.classList.toggle('hidden', reports.length === 0 || unconfirmed === 0);
+        notice.textContent = unconfirmed + ' 条来源日期待核对；图表暂按附件顺序显示，不代表真实时间趋势。5张附件按独立来源保留。';
+      }
+      reports.forEach(report => {
+        const row = document.createElement('div');
+        row.className = 'w-full flex items-center gap-2 py-2.5 border-b border-[rgba(145,166,190,.12)]';
+        const open = document.createElement('button');
+        open.type = 'button';
+        open.className = 'flex-1 min-w-0 py-1 text-left';
+        open.onclick = () => openHealthReportEditor(report);
+        const heading = document.createElement('span');
+        heading.className = 'block text-sm font-semibold text-white';
+        heading.textContent = '来源 ' + report.sourceOrder + ' · ' + healthReportDateLabel(report);
+        const details = document.createElement('span');
+        details.className = 'block mt-1 text-xs text-cyberTextDim font-mono';
+        details.textContent = (report.observations || []).map(item => {
+          const flag = item.printedFlag === 'high' ? ' ↑' : '';
+          return item.metricCode + ' ' + item.value + ' ' + item.unit + flag;
+        }).join('　');
+        open.append(heading, details);
+        const state = document.createElement('span');
+        state.className = 'text-[11px] text-amber-300 flex-shrink-0';
+        state.textContent = report.dateConfirmed ? '日期已核对' : '待核对';
+        const remove = document.createElement('button');
+        remove.type = 'button';
+        remove.className = 'min-h-11 min-w-11 px-2 text-xs text-cyberDanger flex-shrink-0';
+        remove.setAttribute('aria-label', '删除来源 ' + report.sourceOrder + ' 检查记录');
+        remove.textContent = '删除';
+        remove.onclick = () => confirmDeleteHealthReport(report);
+        row.append(open, state, remove);
+        list?.appendChild(row);
+      });
+    }
+
+    function renderHealthChart(metric, chartRoot) {
+      const allRows = (healthDocument?.reports || []).flatMap(report => (report.observations || [])
+        .filter(item => item.metricId === metric.id || item.metricCode === metric.code)
+        .map(item => ({ ...item, sourceId: report.id, sourceOrder: report.sourceOrder, reportDate: report.reportDate, examDate: report.examDate, dateType: report.dateType, dateConfirmed: report.dateConfirmed })));
+      const datedRows = allRows.filter(item => item.dateConfirmed && (item.examDate || item.reportDate))
+        .sort((a, b) => (a.examDate || a.reportDate).localeCompare(b.examDate || b.reportDate) || a.sourceOrder - b.sourceOrder);
+      const chronological = datedRows.length >= 2;
+      const rows = chronological ? datedRows : [...allRows].sort((a, b) => a.sourceOrder - b.sourceOrder);
+      const unit = metric.unit || rows[0]?.unit || '';
+      const color = metric.code === 'AST' ? '#A88BFF' : metric.code === 'ALT' ? '#27F2C3' : '#00F0FF';
+      const block = document.createElement('section');
+      block.className = 'health-chart-block';
+      const header = document.createElement('div');
+      header.className = 'flex items-baseline justify-between px-1';
+      const heading = document.createElement('h3');
+      heading.className = 'text-sm font-bold text-white';
+      heading.textContent = metric.label || metric.code || '健康指标';
+      const latestLabel = document.createElement('span');
+      latestLabel.className = 'text-xs font-mono text-cyberTextDim';
+      const latest = datedRows.length ? datedRows[datedRows.length - 1] : null;
+      latestLabel.textContent = latest ? '最新 ' + latest.value + ' ' + latest.unit + (latest.dateType === 'report' ? ' · 报告日' : '') : '日期确认后显示';
+      header.append(heading, latestLabel);
+      const plot = document.createElement('div');
+      plot.className = 'health-chart-wrap';
+      const canvas = document.createElement('canvas');
+      canvas.id = 'health-chart-' + metric.id;
+      canvas.setAttribute('aria-label', (metric.label || metric.code) + '数值趋势图');
+      canvas.setAttribute('role', 'img');
+      plot.appendChild(canvas);
+      block.append(header, plot);
+      chartRoot.appendChild(block);
+      if (!rows.length) {
+        const empty = document.createElement('p');
+        empty.className = 'px-1 pb-2 text-[11px] text-cyberTextDim';
+        empty.textContent = '添加检查结果后显示此指标趋势。';
+        block.appendChild(empty);
+        return;
+      }
+
+      const labels = rows.map(item => chronological ? (item.examDate || item.reportDate).slice(5).replace('-', '/') : '来源' + item.sourceOrder);
+      const xValues = rows.map((item, index) => chronological ? Date.parse((item.examDate || item.reportDate) + 'T04:00:00Z') : index + 1);
+      const values = rows.map((item, index) => ({ x: xValues[index], y: Number(item.value), sourceOrder: item.sourceOrder, referenceRange: item.referenceRange }));
+      const reference = rows.map((item, index) => ({ x: xValues[index], y: Number.isFinite(Number(item.referenceRange?.upper)) ? Number(item.referenceRange.upper) : null }));
+      if (typeof Chart !== 'function') {
+        const svgNs = 'http://www.w3.org/2000/svg';
+        const svg = document.createElementNS(svgNs, 'svg');
+        svg.setAttribute('viewBox', '0 0 360 148');
+        svg.setAttribute('preserveAspectRatio', 'none');
+        svg.setAttribute('role', 'img');
+        svg.setAttribute('aria-label', (metric.label || metric.code) + '来源顺序数值图');
+        const minValue = Math.min(...rows.map(row => Number(row.value)));
+        const maxValue = Math.max(...rows.map(row => Number(row.value)), ...rows.map(row => Number(row.referenceRange?.upper) || 0));
+        const yMin = Math.max(0, Math.floor((minValue * 0.82) / 10) * 10);
+        const yMax = Math.ceil((maxValue * 1.08) / 10) * 10 || 10;
+        const xAt = index => rows.length < 2 ? 180 : 24 + index * (312 / (rows.length - 1));
+        const yAt = value => 116 - ((value - yMin) / Math.max(1, yMax - yMin)) * 92;
+        for (let index = 0; index < 4; index += 1) {
+          const y = 24 + index * 30;
+          const grid = document.createElementNS(svgNs, 'line');
+          grid.setAttribute('x1', '20'); grid.setAttribute('x2', '340');
+          grid.setAttribute('y1', String(y)); grid.setAttribute('y2', String(y));
+          grid.setAttribute('stroke', 'rgba(145,166,190,.16)'); grid.setAttribute('stroke-dasharray', '3 4');
+          svg.appendChild(grid);
+        }
+        const path = document.createElementNS(svgNs, 'polyline');
+        path.setAttribute('points', values.map((point, index) => xAt(index) + ',' + yAt(point.y)).join(' '));
+        path.setAttribute('fill', 'none'); path.setAttribute('stroke', color); path.setAttribute('stroke-width', '2.5');
+        path.setAttribute('stroke-linecap', 'round'); path.setAttribute('stroke-linejoin', 'round');
+        svg.appendChild(path);
+        const labeled = new Set([0, rows.length - 1, rows.findIndex(row => row.printedFlag === 'high')].filter(index => index >= 0));
+        values.forEach((point, index) => {
+          const circle = document.createElementNS(svgNs, 'circle');
+          circle.setAttribute('cx', String(xAt(index))); circle.setAttribute('cy', String(yAt(point.y)));
+          circle.setAttribute('r', index === rows.length - 1 ? '4.5' : '3.5');
+          circle.setAttribute('fill', '#0B1A2A'); circle.setAttribute('stroke', color); circle.setAttribute('stroke-width', '2');
+          const title = document.createElementNS(svgNs, 'title');
+          title.textContent = labels[index] + ' · ' + point.y + ' ' + rows[index].unit;
+          circle.appendChild(title); svg.appendChild(circle);
+          if (labeled.has(index)) {
+            const valueLabel = document.createElementNS(svgNs, 'text');
+            valueLabel.setAttribute('x', String(xAt(index))); valueLabel.setAttribute('y', String(Math.max(13, yAt(point.y) - (index % 2 ? 9 : 6))));
+            valueLabel.setAttribute('fill', rows[index].printedFlag === 'high' ? '#E5BC78' : '#F4F7FB');
+            valueLabel.setAttribute('font-size', '9'); valueLabel.setAttribute('text-anchor', 'middle');
+            valueLabel.textContent = String(point.y); svg.appendChild(valueLabel);
+          }
+          const xLabel = document.createElementNS(svgNs, 'text');
+          xLabel.setAttribute('x', String(xAt(index))); xLabel.setAttribute('y', '140');
+          xLabel.setAttribute('fill', '#93A4B8'); xLabel.setAttribute('font-size', '8'); xLabel.setAttribute('text-anchor', 'middle');
+          xLabel.textContent = labels[index]; svg.appendChild(xLabel);
+        });
+        canvas.replaceWith(svg);
+        return;
+      }
+      const valueLabels = {
+        id: 'healthLabels-' + metric.id,
+        afterDatasetsDraw(chart) {
+          const points = chart.getDatasetMeta(0)?.data || [];
+          const placed = [];
+          const ctx = chart.ctx;
+          ctx.save(); ctx.font = '10px "SF Mono", monospace'; ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
+          const candidates = [...new Set([points.length - 1, 0, rows.findIndex(row => row.printedFlag === 'high')])].filter(index => index >= 0);
+          const low = Math.min(...rows.map(row => Number(row.value)));
+          const high = Math.max(...rows.map(row => Number(row.value)));
+          [low, high].forEach(value => {
+            const index = rows.findIndex(row => Number(row.value) === value);
+            if (index >= 0 && !candidates.includes(index)) candidates.splice(1, 0, index);
+          });
+          for (const index of candidates) {
+            const point = points[index], row = rows[index];
+            if (!point || !row || placed.length >= 5) continue;
+            const label = String(row.value), width = ctx.measureText(label).width;
+            if (placed.some(box => Math.abs(box.x - point.x) < (box.width + width) / 2 + 8)) continue;
+            for (const baseline of [point.y - 8, point.y + 17]) {
+              const box = { x: point.x, width, top: baseline - 10, bottom: baseline + 2 };
+              if (box.top < chart.chartArea.top || box.bottom > chart.chartArea.bottom) continue;
+              if (placed.some(other => Math.abs(other.x - box.x) < (other.width + box.width) / 2 + 8 && box.top < other.bottom + 3 && box.bottom + 3 > other.top)) continue;
+              ctx.fillStyle = row.printedFlag === 'high' ? '#E5BC78' : color;
+              ctx.fillText(label, point.x, baseline); placed.push(box); break;
+            }
+          }
+          ctx.restore();
+        }
+      };
+      healthChartInstances[metric.id] = new Chart(canvas.getContext('2d'), {
+        type: 'line',
+        data: {
+          labels,
+          datasets: [
+            { label: metric.label || metric.code, data: values, parsing: false, borderColor: color, backgroundColor: color, borderWidth: 2, tension: 0, pointRadius: 4, pointHoverRadius: 6, fill: false },
+            { label: '该份报告参考上限', data: reference, parsing: false, borderColor: 'rgba(147,164,184,.55)', borderWidth: 1, borderDash: [5, 4], stepped: 'before', pointRadius: 0, spanGaps: false }
+          ]
+        },
+        plugins: [valueLabels],
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          interaction: { mode: 'nearest', intersect: true },
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              backgroundColor: 'rgba(11,26,42,.96)', borderColor: 'rgba(39,242,195,.4)', borderWidth: 1,
+              callbacks: {
+                title(items) {
+                  const row = rows[items?.[0]?.dataIndex];
+                  if (!row) return '';
+                  if (!chronological) return '来源 ' + row.sourceOrder + ' · 日期待确认';
+                  return (row.examDate || row.reportDate) + (row.dateType === 'report' ? ' · 报告日' : row.dateType === 'specimen' ? ' · 采样日' : ' · 检查日');
+                },
+                label(item) {
+                  const row = rows[item.dataIndex], range = row?.referenceRange;
+                  return !row ? '' : (metric.code || metric.label) + ' ' + row.value + ' ' + row.unit + (range ? ' · 本次报告范围 ' + range.lower + '–' + range.upper : ' · 参考范围未提供');
+                }
+              }
+            }
+          },
+          scales: {
+            x: {
+              type: 'linear',
+              min: xValues.length ? Math.min(...xValues) - (chronological ? 86400000 : 0.35) : 0,
+              max: xValues.length ? Math.max(...xValues) + (chronological ? 86400000 : 0.35) : 5,
+              grid: { color: 'rgba(145,166,190,.08)' },
+              ticks: { color: '#93A4B8', maxTicksLimit: 5, font: { size: 10, family: 'monospace' }, callback(value) {
+                return chronological ? new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shanghai', month: 'numeric', day: 'numeric' }).format(new Date(Number(value))) : '来源' + value;
+              } }
+            },
+            y: {
+              beginAtZero: true,
+              suggestedMax: Math.max(60, ...rows.map(row => Number(row.value) || 0), ...rows.map(row => Number(row.referenceRange?.upper) || 0)) * 1.12,
+              grid: { color: 'rgba(145,166,190,.08)' },
+              ticks: { color: '#93A4B8', maxTicksLimit: 4, font: { size: 10, family: 'monospace' } }
+            }
+          }
+        }
+      });
+      canvas.onclick = event => {
+        const index = healthChartInstances[metric.id]?.getElementsAtEventForMode(event, 'nearest', { intersect: true }, true)?.[0]?.index;
+        if (index !== undefined && rows[index]) openHealthReportEditor((healthDocument.reports || []).find(report => report.id === rows[index].sourceId));
+      };
+    }
+
+    function renderHealthPage() {
+      const page = document.getElementById('healthPage');
+      if (!page || !healthDocument) return;
+      const activeIndicators = healthDocument.indicators.filter(item => !item.deletedAt && item.visible !== false);
+      renderHealthTodayPlan();
+      renderHealthReports();
+      Object.values(healthChartInstances).forEach(chart => chart?.destroy());
+      healthChartInstances = {};
+      const chartRoot = document.getElementById('healthMetricCharts');
+      if (chartRoot) {
+        chartRoot.replaceChildren();
+        activeIndicators.forEach(indicator => renderHealthChart(indicator, chartRoot));
+      }
+      const trendFootnote = document.getElementById('healthTrendFootnote');
+      if (trendFootnote) {
+        const confirmedDates = healthDocument.reports.filter(report => report.dateConfirmed && (report.examDate || report.reportDate)).length;
+        trendFootnote.textContent = confirmedDates >= 2
+          ? '按已确认日期绘图；未确认日期的来源不会混入趋势。参考范围逐份保留。'
+          : '检查日期确认前，横轴按来源顺序预览，不代表正式时间趋势；参考范围按每份报告显示。';
+      }
+      const calendarStatus = document.getElementById('healthCalendarStatus');
+      const calendarHint = document.getElementById('healthCalendarHint');
+      const manageStatus = document.getElementById('healthCalendarManageStatus');
+      if (!healthDocument.calendar?.active) {
+        if (calendarStatus) calendarStatus.textContent = '日历同步已暂停';
+        if (calendarHint) calendarHint.textContent = '手机里已缓存的事件仍需在iPhone日历中取消订阅。';
+        if (manageStatus) manageStatus.textContent = '同步已暂停 · 需要时可重新生成订阅';
+      } else if (healthDocument.calendar?.userConfirmedAt) {
+        if (calendarStatus) calendarStatus.textContent = '已确认添加到iPhone日历';
+        if (calendarHint) calendarHint.textContent = '事件提醒仍受iPhone日历通知、专注模式和网络设置影响。';
+        if (manageStatus) manageStatus.textContent = '本人已确认添加 · 事件提醒需在iPhone日历设置中开启';
+      } else {
+        if (calendarStatus) calendarStatus.textContent = 'iPhone日历尚未确认添加';
+        if (calendarHint) calendarHint.textContent = getHealthPlanReady() ? '先添加健康用药日历，再到iPhone日历开启事件提醒。' : '先设置计划时间，然后添加专用日历。';
+        if (manageStatus) manageStatus.textContent = '待本人确认订阅 · 不能自动读取iPhone日历状态';
+      }
+      const addCalendar = document.getElementById('btnAddHealthCalendar');
+      if (addCalendar) {
+        addCalendar.textContent = healthDocument.calendar?.userConfirmedAt ? '重新获取链接' : '添加到日历';
+        addCalendar.disabled = !getHealthPlanReady() || !healthDocument.calendar?.active;
+        addCalendar.classList.toggle('opacity-40', addCalendar.disabled);
+      }
+      const subscribeLink = document.getElementById('healthCalendarSubscribeLink');
+      if (subscribeLink) subscribeLink.classList.toggle('hidden', !healthCalendarLink);
+      const copyLink = document.getElementById('btnCopyCalendarLink');
+      if (copyLink) copyLink.classList.toggle('hidden', !healthCalendarLink);
+      const calendarConfirmed = document.getElementById('btnConfirmCalendarSubscription');
+      if (calendarConfirmed) calendarConfirmed.classList.toggle('hidden', !healthCalendarLink || !!healthDocument.calendar?.userConfirmedAt);
+      const stopCalendar = document.getElementById('btnStopCalendarSync');
+      if (stopCalendar) stopCalendar.classList.toggle('hidden', !healthDocument.calendar?.active || !getHealthPlanReady());
+      const manager = document.getElementById('healthMetricManagerList');
+      if (manager) {
+        manager.replaceChildren();
+        healthDocument.indicators.filter(item => !item.deletedAt).forEach(indicator => {
+          const row = document.createElement('div');
+          row.className = 'flex items-center gap-2 py-3';
+          const label = document.createElement('span');
+          label.className = 'flex-1 min-w-0 text-sm text-white truncate';
+          label.textContent = indicator.code ? indicator.code + ' · ' + indicator.label.split('·').pop().trim() : indicator.label;
+          const toggle = document.createElement('button');
+          toggle.type = 'button';
+          toggle.className = 'min-h-11 px-2 text-xs text-cyberTextDim';
+          toggle.textContent = indicator.visible === false ? '显示' : '隐藏';
+          toggle.onclick = () => updateHealthMetric(indicator.id, { visible: indicator.visible === false });
+          const remove = document.createElement('button');
+          remove.type = 'button';
+          remove.className = 'min-h-11 px-2 text-xs text-cyberDanger';
+          remove.textContent = '删除';
+          remove.onclick = () => confirmDeleteHealthMetric(indicator);
+          row.append(label, toggle, remove);
+          manager.appendChild(row);
+        });
+      }
+      const hiddenMetrics = healthDocument.indicators.filter(item => !item.deletedAt && item.visible === false);
+      const hiddenRows = document.getElementById('healthHiddenMetrics');
+      if (hiddenRows) {
+        hiddenRows.replaceChildren();
+        hiddenMetrics.forEach(metric => {
+          const button = document.createElement('button');
+          button.type = 'button';
+          button.className = 'text-xs text-cyberCyan underline py-1';
+          button.textContent = '显示 ' + metric.label;
+          button.onclick = () => updateHealthMetric(metric.id, { visible: true });
+          hiddenRows.appendChild(button);
+        });
+        hiddenRows.classList.toggle('hidden', hiddenMetrics.length === 0);
+      }
+      const title = document.getElementById('healthReportCount');
+      if (title) title.textContent = '共 ' + healthDocument.reports.length + ' 个来源';
+    }
+
+    function switchAppTab(tab) {
+      activeHealthTab = tab === 'health' ? 'health' : 'weight';
+      const weightPage = document.getElementById('weightPage');
+      const healthPage = document.getElementById('healthPage');
+      const navWeight = document.getElementById('btnNavWeight');
+      const navHealth = document.getElementById('btnNavHealth');
+      const showHealth = activeHealthTab === 'health';
+      weightPage?.classList.toggle('hidden', showHealth);
+      healthPage?.classList.toggle('hidden', !showHealth);
+      healthPage?.setAttribute('aria-hidden', String(!showHealth));
+      navWeight?.setAttribute('aria-current', showHealth ? 'false' : 'page');
+      navHealth?.setAttribute('aria-current', showHealth ? 'page' : 'false');
+      try { localStorage.setItem('tirz_active_main_tab', activeHealthTab); } catch (e) {}
+      if (showHealth && authInitializationComplete) {
+        const date = document.getElementById('healthTodayDate');
+        if (date) date.textContent = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shanghai', month: 'long', day: 'numeric', weekday: 'long' }).format(new Date());
+        loadHealthPageData();
+      }
+      window.scrollTo(0, 0);
+    }
+
+    function openHealthModal(id) {
+      const modal = document.getElementById(id);
+      if (modal) modal.classList.remove('hidden');
+    }
+
+    function closeHealthModal(id) {
+      const modal = document.getElementById(id);
+      if (modal) modal.classList.add('hidden');
+      if (id === 'healthReportModal' && healthOcrAbortController) {
+        healthOcrAbortController.abort();
+        healthOcrAbortController = null;
+      }
+    }
+
+    function openHealthPlanModal() {
+      const byId = id => healthDocument?.medicationPlans?.find(plan => plan.id === id);
+      const oral = byId('oral') || {};
+      const topical = byId('topical') || {};
+      const lacquer = byId('nail-lacquer') || {};
+      ['1', '2', '3'].forEach((slot, index) => {
+        const input = document.getElementById('healthOralTime' + slot);
+        if (input) input.value = oral.times?.[index] || '';
+      });
+      const values = {
+        healthOralStartDate: oral.startDate,
+        healthTopicalTime: topical.times?.[0],
+        healthTopicalStartDate: topical.startDate,
+        healthLacquerTime: lacquer.time,
+        healthLacquerStartDate: lacquer.startDate
+      };
+      Object.entries(values).forEach(([id, value]) => {
+        const input = document.getElementById(id);
+        if (input) input.value = value || '';
+      });
+      openHealthModal('healthPlanModal');
+    }
+
+    async function saveHealthPlansFromForm() {
+      const val = id => document.getElementById(id)?.value || '';
+      const times = [val('healthOralTime1'), val('healthOralTime2'), val('healthOralTime3')];
+      const dates = [val('healthOralStartDate'), val('healthTopicalStartDate'), val('healthLacquerStartDate')];
+      const topicalTime = val('healthTopicalTime');
+      const lacquerTime = val('healthLacquerTime');
+      if (times.some(time => !/^([01]\d|2[0-3]):[0-5]\d$/.test(time)) || new Set(times).size !== 3
+        || !/^([01]\d|2[0-3]):[0-5]\d$/.test(topicalTime) || !/^([01]\d|2[0-3]):[0-5]\d$/.test(lacquerTime)
+        || dates.some(date => !/^\d{4}-\d{2}-\d{2}$/.test(date))) {
+        showToast('请填写3个不同口服时间，以及另外两项提醒时间和生效日期', 'error');
+        return;
+      }
+      const plans = [
+        { id: 'oral', name: '口服用药', cadence: 'daily-slots', frequencyPerDay: 3, times, startDate: dates[0], active: true },
+        { id: 'topical', name: '晚间外用药', cadence: 'daily', frequencyPerDay: 1, times: [topicalTime], startDate: dates[1], active: true },
+        { id: 'nail-lacquer', name: '涂甲油', cadence: 'interval-days', intervalDays: 3, time: lacquerTime, startDate: dates[2], active: true }
+      ];
+      const save = document.getElementById('btnSaveHealthPlan');
+      if (save) { save.disabled = true; save.textContent = '正在保存…'; }
+      try {
+        await commitHealthAction('save-plans', { medicationPlans: plans });
+        closeHealthModal('healthPlanModal');
+        showToast('用药计划已保存');
+      } catch (error) {
+        showToast(error.message, 'error');
+      } finally {
+        if (save) { save.disabled = false; save.textContent = '保存计划'; }
+      }
+    }
+
+    async function addCalendarToIphone() {
+      if (!getHealthPlanReady()) {
+        openHealthPlanModal();
+        showToast('请先设置三个计划的时间和开始日期');
+        return;
+      }
+      try {
+        const result = await CloudStorageAdapter.getHealthCalendarLink();
+        healthCalendarLink = result;
+        const link = document.getElementById('healthCalendarSubscribeLink');
+        if (link) {
+          link.href = result.webcalUrl;
+          link.classList.remove('hidden');
+          link.textContent = '在iPhone日历中打开订阅';
+        }
+        renderHealthPage();
+        openHealthModal('healthManageModal');
+        showToast('订阅链接已准备好；点击后请在iPhone系统中确认');
+      } catch (error) {
+        showToast(error.message, 'error');
+      }
+    }
+
+    async function stopHealthCalendarSync() {
+      showCyberConfirm({
+        title: '停止后续日历同步？',
+        message: '之后不再从此订阅更新事件。iPhone上已经缓存的事件可能继续显示；如需立即清理，请在iPhone日历里取消订阅。',
+        onConfirm: async () => {
+          try {
+            await commitHealthAction('stop-calendar');
+            healthCalendarLink = null;
+            closeHealthModal('healthManageModal');
+            showToast('已停止后续日历同步；请在iPhone中取消订阅以移除缓存事件');
+          } catch (error) { showToast(error.message, 'error'); }
+        }
+      });
+    }
+
+    async function updateHealthMetric(id, changes) {
+      try {
+        await commitHealthMutation('/indicators/' + encodeURIComponent(id), 'PATCH', changes);
+      } catch (error) { showToast(error.message, 'error'); }
+    }
+
+    function confirmDeleteHealthMetric(indicator) {
+      const count = healthDocument.reports.reduce((sum, report) => sum + (report.observations || []).filter(row => row.metricId === indicator.id || row.metricCode === indicator.code).length, 0);
+      showCyberConfirm({
+        title: '删除指标 ' + indicator.label + '？',
+        message: '将删除此指标及当前记录中的' + count + '条数值；其他指标、报告来源和用药日历不受影响。此操作不可从页面撤销。',
+        onConfirm: async () => {
+          try {
+            await commitHealthMutation('/indicators/' + encodeURIComponent(indicator.id), 'DELETE', { confirmDelete: true });
+            showToast('指标及相关数值已删除');
+          } catch (error) { showToast(error.message, 'error'); }
+        }
+      });
+    }
+
+    function confirmDeleteHealthReport(report) {
+      const count = (report.observations || []).length;
+      showCyberConfirm({
+        title: '删除来源 ' + report.sourceOrder + '？',
+        message: '将删除此报告来源及其中' + count + '项数值；其他来源、指标和用药计划不受影响。',
+        onConfirm: async () => {
+          try {
+            await commitHealthMutation('/reports/' + encodeURIComponent(report.id), 'DELETE', { confirmDelete: true });
+            showToast('检查来源已删除');
+          } catch (error) { showToast(error.message, 'error'); }
+        }
+      });
+    }
+
+    function appendHealthField(parent, labelText, value, options = {}) {
+      const row = document.createElement('label');
+      row.className = 'block text-xs text-cyberTextDim';
+      row.textContent = labelText;
+      const input = document.createElement('input');
+      input.type = options.type || 'number';
+      input.step = options.step || 'any';
+      input.value = value == null ? '' : String(value);
+      input.className = 'health-form-control mt-1';
+      input.setAttribute('aria-label', labelText);
+      input.dataset.healthField = options.field;
+      row.appendChild(input);
+      parent.appendChild(row);
+      return input;
+    }
+
+    function appendHealthObservationEditor(metric, existing = null, extracted = null) {
+      const list = document.getElementById('healthOCRFields');
+      if (!list) return;
+      const row = document.createElement('section');
+      row.className = 'rounded-xl border border-[rgba(145,166,190,.18)] p-3 space-y-2';
+      row.dataset.metricId = metric.id;
+      row.dataset.metricCode = metric.code || '';
+      const title = document.createElement('div');
+      title.className = 'text-sm font-bold text-white';
+      title.textContent = metric.label + (extracted?.sourceLabel ? ' · 报告名：' + extracted.sourceLabel : '');
+      row.appendChild(title);
+      const grid = document.createElement('div');
+      grid.className = 'grid grid-cols-2 gap-2';
+      appendHealthField(grid, '数值', existing?.value ?? extracted?.value, { field: 'value' });
+      appendHealthField(grid, '单位', existing?.unit || extracted?.unit || metric.unit, { field: 'unit', type: 'text' });
+      const reference = existing?.referenceRange || extracted?.referenceRange;
+      appendHealthField(grid, '本报告参考下限', reference?.lower, { field: 'rangeLower' });
+      appendHealthField(grid, '本报告参考上限', reference?.upper, { field: 'rangeUpper' });
+      row.appendChild(grid);
+      const flag = document.createElement('p');
+      flag.className = 'text-[11px] text-cyberTextDim';
+      flag.textContent = '参考范围只按本次报告记录，不据此诊断。';
+      row.appendChild(flag);
+      list.appendChild(row);
+    }
+
+    function openHealthReportEditor(report = null) {
+      if (!healthDocument) {
+        showToast('健康数据尚未加载，请重试', 'error');
+        return;
+      }
+      healthEditingReportId = report?.id || null;
+      healthSourceImageBase64 = null;
+      healthRecognizedExtraction = null;
+      const title = document.getElementById('healthReportTitle');
+      const status = document.getElementById('healthOCRStatus');
+      const fields = document.getElementById('healthOCRFields');
+      const preview = document.getElementById('healthReportPreview');
+      const dateType = document.getElementById('healthReportDateType');
+      const dateInput = document.getElementById('healthReportDate');
+      const dateConfirmed = document.getElementById('healthDateConfirmed');
+      const remark = document.getElementById('healthReportRemark');
+      const candidates = document.getElementById('healthDateCandidates');
+      const duplicateNotice = document.getElementById('healthReportDuplicateNotice');
+      if (title) title.textContent = report ? '核对检查来源 ' + report.sourceOrder : '添加检查';
+      if (status) status.textContent = '识别结果需要本人逐项核对；年份或检查日期不清楚时可以暂不确认。';
+      if (fields) fields.replaceChildren();
+      if (preview) {
+        preview.classList.toggle('hidden', !report?.photoPath);
+        preview.src = report?.photoPath ? CloudStorageAdapter.resolvePhotoUrl(report.photoPath) : '';
+      }
+      if (dateType) dateType.value = report?.dateType || '';
+      if (dateInput) dateInput.value = report?.examDate || report?.reportDate || '';
+      if (dateConfirmed) dateConfirmed.checked = report?.dateConfirmed === true;
+      if (remark) remark.value = report?.remarks || '';
+      if (candidates) { candidates.replaceChildren(); candidates.classList.add('hidden'); }
+      if (duplicateNotice) { duplicateNotice.textContent = ''; duplicateNotice.classList.add('hidden'); }
+      const indicators = healthDocument.indicators.filter(metric => !metric.deletedAt);
+      if (report) {
+        report.observations.forEach(observation => {
+          const metric = indicators.find(item => item.id === observation.metricId || item.code === observation.metricCode);
+          if (metric) appendHealthObservationEditor(metric, observation);
+        });
+      } else {
+        indicators.forEach(metric => appendHealthObservationEditor(metric));
+      }
+      const fileInput = document.getElementById('healthReportFileInput');
+      if (fileInput) fileInput.value = '';
+      openHealthModal('healthReportModal');
+    }
+
+    function showRecognizedHealthFields(extraction) {
+      healthRecognizedExtraction = extraction;
+      const list = document.getElementById('healthOCRFields');
+      const candidateList = document.getElementById('healthDateCandidates');
+      const status = document.getElementById('healthOCRStatus');
+      if (list) list.replaceChildren();
+      const indicators = healthDocument.indicators.filter(metric => !metric.deletedAt);
+      const mapped = [];
+      (extraction.observations || []).forEach(observation => {
+        const metric = indicators.find(item => item.code === observation.metricCode);
+        if (metric) {
+          mapped.push(metric.id);
+          appendHealthObservationEditor(metric, null, observation);
+        }
+      });
+      indicators.filter(metric => !mapped.includes(metric.id)).forEach(metric => appendHealthObservationEditor(metric));
+      if (status) status.textContent = mapped.length
+        ? '已读取 ' + mapped.length + ' 项指标候选值，请核对后保存。'
+        : '未识别到已配置指标，请手动填写。';
+      if (!candidateList) return;
+      candidateList.replaceChildren();
+      const dates = extraction.dateCandidates || [];
+      if (!dates.length) return candidateList.classList.add('hidden');
+      candidateList.classList.remove('hidden');
+      const hint = document.createElement('span');
+      hint.className = 'w-full block text-[11px] text-cyberTextDim';
+      hint.textContent = '图片中的日期候选（点击带入，仍需核对）';
+      candidateList.appendChild(hint);
+      dates.forEach(candidate => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'px-2 py-1 rounded-lg border border-[rgba(145,166,190,.22)] text-[11px] text-cyberTextDim';
+        const typeLabels = { specimen: '采样', examination: '检查', report: '报告', unknown: '类型待确认' };
+        button.textContent = (typeLabels[candidate.type] || '日期') + ' ' + candidate.value + (candidate.rawLabel ? ' · ' + candidate.rawLabel : '');
+        button.onclick = () => {
+          const dateType = document.getElementById('healthReportDateType');
+          const dateInput = document.getElementById('healthReportDate');
+          const confirmed = document.getElementById('healthDateConfirmed');
+          if (dateType) dateType.value = candidate.type;
+          if (dateInput) dateInput.value = candidate.value;
+          if (confirmed) confirmed.checked = false;
+        };
+        candidateList.appendChild(button);
+      });
+    }
+
+    async function readHealthReportFile(file) {
+      if (!file) return;
+      const status = document.getElementById('healthOCRStatus');
+      const preview = document.getElementById('healthReportPreview');
+      const saveButton = document.getElementById('btnSaveHealthReport');
+      if (status) status.textContent = '正在安全压缩并识别报告…';
+      if (saveButton) saveButton.disabled = true;
+      try {
+        const compressed = await compressScaleImage(file, 1600, 0.82);
+        healthSourceImageBase64 = compressed;
+        if (preview) { preview.src = compressed; preview.classList.remove('hidden'); }
+        if (!CloudStorageAdapter.sessionState.isLocalDemo && !CloudStorageAdapter.isAuthenticated()) {
+          throw new Error('请先登录，再上传私有检查报告');
+        }
+        healthOcrAbortController = new AbortController();
+        const timeout = setTimeout(() => healthOcrAbortController?.abort(), 20_000);
+        try {
+          const result = await CloudStorageAdapter.analyzeHealthReport(compressed, healthOcrAbortController.signal);
+          showRecognizedHealthFields(result.extraction || {});
+        } finally {
+          clearTimeout(timeout);
+          healthOcrAbortController = null;
+        }
+      } catch (error) {
+        if (status) status.textContent = error?.name === 'AbortError'
+          ? '识别超时，图片已保留；可重试或手动录入。'
+          : (error.message || '识别失败，图片已保留；可手动录入。');
+        if (!healthRecognizedExtraction) {
+          showRecognizedHealthFields({ dateCandidates: [], observations: [] });
+          if (status && error?.name !== 'AbortError') status.textContent = (error.message || '识别失败') + '；请手动核对后保存。';
+        }
+      } finally {
+        if (saveButton) saveButton.disabled = false;
+      }
+    }
+
+    function collectHealthReportForm() {
+      const type = document.getElementById('healthReportDateType')?.value || 'unknown';
+      const date = document.getElementById('healthReportDate')?.value || '';
+      const dateConfirmed = document.getElementById('healthDateConfirmed')?.checked === true;
+      if (dateConfirmed && (!date || type === 'unknown')) throw new Error('确认日期前请先选择完整日期和日期类型。');
+      const observations = [];
+      document.querySelectorAll('#healthOCRFields [data-metric-id]').forEach(section => {
+        const value = section.querySelector('[data-health-field="value"]')?.value;
+        if (value === '' || value == null) return;
+        const unit = section.querySelector('[data-health-field="unit"]')?.value?.trim();
+        const lowText = section.querySelector('[data-health-field="rangeLower"]')?.value;
+        const highText = section.querySelector('[data-health-field="rangeUpper"]')?.value;
+        if (!unit) throw new Error('每个已填写指标都需要单位。');
+        const referenceRange = lowText === '' && highText === '' ? null
+          : lowText !== '' && highText !== '' && Number(lowText) < Number(highText) ? { lower: Number(lowText), upper: Number(highText) }
+            : (() => { throw new Error('参考下限和上限必须同时填写，且下限小于上限。'); })();
+        const code = section.dataset.metricCode || null;
+        observations.push({
+          metricId: section.dataset.metricId,
+          metricCode: code,
+          sourceLabel: section.dataset.sourceLabel || code || '',
+          value: Number(value),
+          unit,
+          referenceRange,
+          printedFlag: referenceRange && Number(value) > referenceRange.upper ? 'high' : ''
+        });
+      });
+      if (!observations.length) throw new Error('请至少填写一项指标数值。');
+      return {
+        report: {
+          reportDate: type === 'report' && date ? date : null,
+          examDate: ['specimen', 'examination'].includes(type) && date ? date : null,
+          dateType: date && type ? type : 'unknown',
+          dateConfirmed,
+          remarks: document.getElementById('healthReportRemark')?.value || '',
+          observations
+        },
+        photoBase64: healthSourceImageBase64
+      };
+    }
+
+    async function saveHealthReport() {
+      let payload;
+      try { payload = collectHealthReportForm(); }
+      catch (error) { showToast(error.message, 'error'); return; }
+      const button = document.getElementById('btnSaveHealthReport');
+      if (button) { button.disabled = true; button.textContent = '正在保存…'; }
+      try {
+        const path = healthEditingReportId ? '/reports/' + encodeURIComponent(healthEditingReportId) : '/reports';
+        const method = healthEditingReportId ? 'PATCH' : 'POST';
+        if (CloudStorageAdapter.sessionState.isLocalDemo) throw new Error('本地预览不会保存真实医疗数据；请登录正式账户后录入。');
+        await CloudStorageAdapter.healthQuery(path, method, { ...payload, expectedRevision: healthDocument.revision || 0 });
+        healthDocument = await CloudStorageAdapter.getHealth();
+        saveHealthCache();
+        renderHealthPage();
+        closeHealthModal('healthReportModal');
+        showToast(payload.report.dateConfirmed ? '检查来源已保存并加入趋势' : '检查来源已保存，日期待确认');
+      } catch (error) {
+        if (error.status === 409) await loadHealthPageData();
+        showToast(error.message, 'error');
+      } finally {
+        if (button) { button.disabled = false; button.textContent = '确认并保存本条'; }
+      }
+    }
+
     async function syncWithCloud(silent = false) {
       syncState.status = 'syncing';
       updateSyncStatusUI();
@@ -1762,6 +3032,9 @@
         syncState.lastSyncedAt = Date.now();
         updateSyncStatusUI();
         refreshAllUI();
+        if (activeHealthTab === 'health' && !CloudStorageAdapter.sessionState.isLocalDemo) {
+          await loadHealthPageData();
+        }
         if (!silent) showToast('数据已同步完成');
       } catch (err) {
         console.warn('Cloud sync error:', err);
@@ -1808,8 +3081,14 @@
 
       try {
         const status = await CloudStorageAdapter.checkAuth();
+        authInitializationComplete = true;
         const userEmail = document.getElementById('sessionUserEmail');
         if (userEmail && status.email) userEmail.textContent = status.email;
+        if (activeHealthTab === 'health') {
+          const date = document.getElementById('healthTodayDate');
+          if (date) date.textContent = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shanghai', month: 'long', day: 'numeric', weekday: 'long' }).format(new Date());
+          await loadHealthPageData();
+        }
 
         // 首次访问或 /setup 入口必须明确打开对应授权弹层；不再依赖 CDN 的 hidden 样式或服务端重定向。
         const setupMode = new URLSearchParams(window.location.search).get('mode') === 'setup';
@@ -3816,6 +5095,101 @@
     // 事件监听绑定 (按钮与模态窗)
     // =========================================================================
     document.addEventListener('DOMContentLoaded', () => {
+      document.getElementById('btnNavWeight').onclick = () => switchAppTab('weight');
+      document.getElementById('btnNavHealth').onclick = () => switchAppTab('health');
+      let initialTab = 'weight';
+      try { initialTab = localStorage.getItem('tirz_active_main_tab') === 'health' ? 'health' : 'weight'; } catch (e) {}
+      switchAppTab(initialTab);
+
+      document.getElementById('btnConfigureHealthPlans').onclick = openHealthPlanModal;
+      document.getElementById('btnHealthCalendarSettings').onclick = () => openHealthModal('healthManageModal');
+      document.getElementById('btnManageHealthMetrics').onclick = () => openHealthModal('healthManageModal');
+      document.getElementById('btnAddHealthReport').onclick = () => openHealthReportEditor();
+      document.getElementById('btnAddHealthMetric').onclick = () => {
+        const form = document.getElementById('healthMetricAddForm');
+        form.classList.remove('hidden');
+        document.getElementById('healthMetricNewName').focus();
+      };
+
+      document.getElementById('btnCloseHealthPlan').onclick = () => closeHealthModal('healthPlanModal');
+      document.getElementById('btnSaveHealthPlan').onclick = saveHealthPlansFromForm;
+      document.getElementById('btnCloseHealthReport').onclick = () => closeHealthModal('healthReportModal');
+      document.getElementById('btnCancelHealthReport').onclick = () => closeHealthModal('healthReportModal');
+      document.getElementById('btnSaveHealthReport').onclick = saveHealthReport;
+      document.getElementById('btnPickHealthReport').onclick = () => document.getElementById('healthReportFileInput').click();
+      document.getElementById('healthReportFileInput').onchange = async event => {
+        const file = event.target.files?.[0];
+        if (file) await readHealthReportFile(file);
+        event.target.value = '';
+      };
+
+      document.getElementById('btnCloseHealthManage').onclick = () => closeHealthModal('healthManageModal');
+      document.getElementById('btnCloseHealthManageFooter').onclick = () => closeHealthModal('healthManageModal');
+      document.getElementById('btnAddHealthCalendar').onclick = async () => {
+        if (!healthDocument?.calendar?.active) {
+          try { await commitHealthAction('resume-calendar'); healthCalendarLink = null; showToast('日历同步已恢复，请重新添加到iPhone'); }
+          catch (error) { showToast(error.message, 'error'); }
+          return;
+        }
+        if (!getHealthPlanReady()) { openHealthPlanModal(); return; }
+        try {
+          healthCalendarLink = await CloudStorageAdapter.getHealthCalendarLink();
+          const link = document.getElementById('healthCalendarSubscribeLink');
+          link.href = healthCalendarLink.webcalUrl;
+          link.classList.remove('hidden');
+          link.textContent = '点击在iPhone日历中确认订阅';
+          document.getElementById('btnCopyCalendarLink').classList.remove('hidden');
+          renderHealthPage();
+          openHealthModal('healthManageModal');
+        } catch (error) { showToast(error.message, 'error'); }
+      };
+      document.getElementById('healthCalendarSubscribeLink').onclick = () => {
+        if (!healthCalendarLink?.webcalUrl) return;
+        document.getElementById('healthCalendarManageStatus').textContent = '已请求打开订阅；请在iPhone日历中确认，再返回此处点“我已完成添加”。';
+      };
+      document.getElementById('btnCopyCalendarLink').onclick = async () => {
+        if (!healthCalendarLink?.httpsUrl) return;
+        try { await navigator.clipboard.writeText(healthCalendarLink.httpsUrl); showToast('只读日历订阅链接已复制'); }
+        catch (error) { showToast('复制失败，请在iPhone中使用添加日历入口', 'error'); }
+      };
+      document.getElementById('btnConfirmCalendarSubscription').onclick = async () => {
+        try { await commitHealthAction('confirm-calendar'); healthCalendarLink = null; showToast('已记录你的日历订阅确认'); }
+        catch (error) { showToast(error.message, 'error'); }
+      };
+      document.getElementById('btnStopCalendarSync').onclick = () => showCyberConfirm({
+        title: '停止健康日历后续同步？',
+        message: '停止后，订阅不再提供后续事件。iPhone可能仍保留已缓存的旧事件，需在iPhone日历中取消订阅清除。',
+        onConfirm: async () => {
+          try { await commitHealthAction('stop-calendar'); healthCalendarLink = null; closeHealthModal('healthManageModal'); showToast('已停止后续同步；请到iPhone日历取消订阅'); }
+          catch (error) { showToast(error.message, 'error'); }
+        }
+      });
+      document.getElementById('healthMetricAddForm').onsubmit = async event => {
+        event.preventDefault();
+        const label = document.getElementById('healthMetricNewName').value.trim();
+        const unit = document.getElementById('healthMetricNewUnit').value.trim();
+        if (!label || !unit) { showToast('请填写指标名称和报告单位', 'error'); return; }
+        try {
+          await commitHealthMutation('/indicators', 'POST', { indicator: { id: 'metric-' + crypto.randomUUID(), label, unit } });
+          event.target.classList.add('hidden');
+          document.getElementById('healthMetricNewName').value = '';
+          document.getElementById('healthMetricNewUnit').value = '';
+          showToast('指标已添加');
+        } catch (error) { showToast(error.message, 'error'); }
+      };
+      document.getElementById('btnCancelAddHealthMetric').onclick = () => {
+        document.getElementById('healthMetricAddForm').classList.add('hidden');
+        document.getElementById('healthMetricNewName').value = '';
+        document.getElementById('healthMetricNewUnit').value = '';
+      };
+      ['healthPlanModal', 'healthReportModal', 'healthManageModal'].forEach(id => {
+        const modal = document.getElementById(id);
+        modal.addEventListener('click', event => { if (event.target === modal) closeHealthModal(id); });
+      });
+      window.addEventListener('online', () => {
+        if (activeHealthTab === 'health' && !CloudStorageAdapter.sessionState.isLocalDemo) loadHealthPageData();
+      });
+
       // 1. 顶栏同步按钮 -> 打开账号与同步
       const btnHeaderSync = document.getElementById('btnHeaderSync');
       const sessionInfoModal = document.getElementById('sessionInfoModal');
@@ -4127,12 +5501,12 @@
       if ('caches' in window) {
         caches.keys().then(names => {
           for (let name of names) {
-            if (name !== 'tirz-tracker-v6.0') caches.delete(name);
+            if (name !== 'tirz-tracker-v6.1') caches.delete(name);
           }
         });
       }
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/sw.js?v=6.0', { updateViaCache: 'none' })
+        navigator.serviceWorker.register('/sw.js?v=6.1', { updateViaCache: 'none' })
           .then(reg => {
             reg.update();
             reg.onupdatefound = () => {
