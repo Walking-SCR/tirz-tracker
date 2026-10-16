@@ -2287,7 +2287,7 @@
         open.onclick = () => openHealthReportEditor(report);
         const heading = document.createElement('span');
         heading.className = 'block text-sm font-semibold text-white';
-        heading.textContent = '来源 ' + report.sourceOrder + ' · ' + healthReportDateLabel(report);
+        heading.textContent = '来源 ' + report.sourceOrder + ' · ' + healthSourceDateLabel(report);
         const details = document.createElement('span');
         details.className = 'block mt-1 text-xs text-cyberTextDim font-mono';
         details.textContent = (report.observations || []).map(item => {

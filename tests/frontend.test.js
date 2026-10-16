@@ -228,6 +228,8 @@ test('health page, report trends, plans, and private iPhone calendar controls ar
   for (const id of requiredIds) assert.ok(html.includes(`id="${id}"`), `Expected id="${id}"`);
   assert.equal((html.match(/document\.addEventListener\('DOMContentLoaded'/g) || []).length, 1, 'App initialization must only run once');
   assert.equal((html.match(/function updateHealthMetric\(/g) || []).length, 1, 'Health metric action must only be declared once');
+  assert.match(html, /healthSourceDateLabel\(report\)/, 'Health report rows must use the date label helper that exists');
+  assert.doesNotMatch(html, /healthReportDateLabel/, 'A stale helper name must not abort report and chart rendering');
 });
 
 function trendPreviewHarness(records, range = 'all') {
