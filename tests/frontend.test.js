@@ -232,6 +232,23 @@ test('health page, report trends, plans, and private iPhone calendar controls ar
   assert.doesNotMatch(html, /healthReportDateLabel/, 'A stale helper name must not abort report and chart rendering');
 });
 
+test('health plan save uses the persisted action and report list omits screenshot-marked source/status labels', () => {
+  const html = fs.readFileSync('index.html', 'utf8');
+  assert.match(html, /persistHealthAction\('save-plans'/, 'Plan save must call the implemented health persistence method');
+  assert.doesNotMatch(html, /commitHealthAction/, 'No stale health action function references may remain');
+  assert.doesNotMatch(html, /heading\.textContent = '来源 ' \+ report\.sourceOrder/, 'Report rows must not render the red-boxed source sequence');
+  assert.doesNotMatch(html, /state\.textContent = report\.dateConfirmed \? '日期已核对'/, 'Report rows must not render the removed confirmation-status column');
+});
+
+test('scale OCR deadline covers image preparation and has a real abort timer', () => {
+  const html = fs.readFileSync('index.html', 'utf8');
+  assert.match(html, /const SCALE_SCAN_DEADLINE_MS = 20_000/);
+  assert.match(html, /scanDeadlineTimer = setTimeout\(/, 'The 20-second clock must actually abort a pending recognition request');
+  assert.match(html, /const scanContext = createScaleScanContext\(file\)/, 'The deadline must start before HEIC conversion and resize');
+  assert.match(html, /requestId: scanContext\.requestId/);
+  assert.match(html, /clientPrepareMs: scanContext\.prepareMs/);
+});
+
 function trendPreviewHarness(records, range = 'all') {
   const html = fs.readFileSync('index.html', 'utf8');
   const mainScript = [...html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/g)]
@@ -331,9 +348,9 @@ test('trend goal gap handles no data, reaching the goal and going below it', () 
   }
 });
 
-test('Service Worker cache version is v6.1 in sw.js and public/sw.js', () => {
+test('Service Worker cache version is v6.2 in sw.js and public/sw.js', () => {
   const rootSw = fs.readFileSync('sw.js', 'utf-8');
   const publicSw = fs.readFileSync('public/sw.js', 'utf-8');
-  assert.ok(rootSw.includes('tirz-tracker-v6.1'), 'sw.js must contain cache v6.1');
-  assert.ok(publicSw.includes('tirz-tracker-v6.1'), 'public/sw.js must contain cache v6.1');
+  assert.ok(rootSw.includes('tirz-tracker-v6.2'), 'sw.js must contain cache v6.2');
+  assert.ok(publicSw.includes('tirz-tracker-v6.2'), 'public/sw.js must contain cache v6.2');
 });

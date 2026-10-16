@@ -811,8 +811,8 @@
             <span id="scanCountdownText" class="absolute font-mono text-base font-black text-cyberNeon">20s</span>
           </div>
           <div>
-            <div class="text-sm font-bold text-white font-mono">正在识别体重数据...</div>
-            <p class="text-xs text-cyberTextDim mt-1">最多需要20秒，请稍候</p>
+            <div id="scanStatusTitle" class="text-sm font-bold text-white font-mono">正在准备图片...</div>
+            <p id="scanStatusMessage" class="text-xs text-cyberTextDim mt-1">转换和识别总计最多20秒</p>
           </div>
           <button id="btnCancelScan" type="button" class="px-4 py-1.5 rounded-lg bg-white/5 text-xs font-mono text-cyberTextDim hover:text-white">
             取消
@@ -827,6 +827,7 @@
           <div>
             <div class="text-sm font-bold text-white font-mono">识别超时，请重试</div>
             <p class="text-xs text-neutral-300 mt-1">我们未能在20秒内识别出体重，请重新识别或手动输入。</p>
+            <p id="scanRequestId" class="hidden mt-2 text-[10px] text-neutral-500 font-mono break-all"></p>
           </div>
           <div class="flex gap-2">
             <button id="btnRetryScan" type="button" class="flex-1 py-2 rounded-xl bg-cyberNeon text-[#06111F] text-xs font-bold font-mono active:scale-95 transition">
@@ -1842,6 +1843,9 @@
     let ocrAbortController = null;
     let scanCountdownTimer = null;
     let scanCountdownSeconds = 20;
+    const SCALE_SCAN_DEADLINE_MS = 20_000;
+    let scanDeadlineTimer = null;
+    let activeScaleScanContext = null;
 
     // 同步状态模型
     const syncState = {
@@ -2287,7 +2291,7 @@
         open.onclick = () => openHealthReportEditor(report);
         const heading = document.createElement('span');
         heading.className = 'block text-sm font-semibold text-white';
-        heading.textContent = '来源 ' + report.sourceOrder + ' · ' + healthSourceDateLabel(report);
+        heading.textContent = healthSourceDateLabel(report);
         const details = document.createElement('span');
         details.className = 'block mt-1 text-xs text-cyberTextDim font-mono';
         details.textContent = (report.observations || []).map(item => {
@@ -2295,16 +2299,13 @@
           return item.metricCode + ' ' + item.value + ' ' + item.unit + flag;
         }).join('　');
         open.append(heading, details);
-        const state = document.createElement('span');
-        state.className = 'text-[11px] text-amber-300 flex-shrink-0';
-        state.textContent = report.dateConfirmed ? '日期已核对' : '待核对';
         const remove = document.createElement('button');
         remove.type = 'button';
         remove.className = 'min-h-11 min-w-11 px-2 text-xs text-cyberDanger flex-shrink-0';
         remove.setAttribute('aria-label', '删除来源 ' + report.sourceOrder + ' 检查记录');
         remove.textContent = '删除';
         remove.onclick = () => confirmDeleteHealthReport(report);
-        row.append(open, state, remove);
+        row.append(open, remove);
         list?.appendChild(row);
       });
     }
@@ -2658,7 +2659,7 @@
       const save = document.getElementById('btnSaveHealthPlan');
       if (save) { save.disabled = true; save.textContent = '正在保存…'; }
       try {
-        await commitHealthAction('save-plans', { medicationPlans: plans });
+        await persistHealthAction('save-plans', { medicationPlans: plans });
         closeHealthModal('healthPlanModal');
         showToast('用药计划已保存');
       } catch (error) {
@@ -2697,7 +2698,7 @@
         message: '之后不再从此订阅更新事件。iPhone上已经缓存的事件可能继续显示；如需立即清理，请在iPhone日历里取消订阅。',
         onConfirm: async () => {
           try {
-            await commitHealthAction('stop-calendar');
+            await persistHealthAction('stop-calendar');
             healthCalendarLink = null;
             closeHealthModal('healthManageModal');
             showToast('已停止后续日历同步；请在iPhone中取消订阅以移除缓存事件');
@@ -4207,14 +4208,12 @@
     function closeWeightModal() {
       const modal = document.getElementById('confirmModal');
       if (modal) modal.classList.add('hidden');
+      if (activeScaleScanContext) activeScaleScanContext.cancelled = true;
       if (ocrAbortController) {
         ocrAbortController.abort();
         ocrAbortController = null;
       }
-      if (scanCountdownTimer) {
-        clearInterval(scanCountdownTimer);
-        scanCountdownTimer = null;
-      }
+      clearScaleScanTimers(activeScaleScanContext);
       hideConfirmInModalErrors();
     }
 
@@ -4258,66 +4257,138 @@
     // =========================================================================
     // AI 视觉识别与图像处理 (带 20 秒倒计时 State 04/05/06/07)
     // =========================================================================
-    async function startScanRecognition(base64Image) {
-      currentParsedImageBase64 = base64Image;
+    function clearScaleScanTimers(context = null) {
+      if (context && activeScaleScanContext && activeScaleScanContext !== context) return;
+      if (scanDeadlineTimer) clearTimeout(scanDeadlineTimer);
+      if (scanCountdownTimer) clearInterval(scanCountdownTimer);
+      scanDeadlineTimer = null;
+      scanCountdownTimer = null;
+      if (!context || activeScaleScanContext === context) activeScaleScanContext = null;
+    }
 
-      const scanState = document.getElementById('confirmScanState');
-      const scanCountdownText = document.getElementById('scanCountdownText');
-      const scanProgressCircle = document.getElementById('scanProgressCircle');
-      const saveBtn = document.getElementById('btnSaveConfirm');
-      const weightInput = document.getElementById('confirmWeightInput');
-      const confidence = document.getElementById('aiDetectConfidence');
+    function createScaleScanContext(file = null) {
+      if (activeScaleScanContext) activeScaleScanContext.cancelled = true;
+      if (ocrAbortController) ocrAbortController.abort();
+      clearScaleScanTimers();
+      const selectedAt = performance.now();
+      const name = String(file?.name || '').toLowerCase();
+      const mimeType = String(file?.type || (name.endsWith('.heic') ? 'image/heic' : name.endsWith('.heif') ? 'image/heif' : 'image/jpeg'));
+      const context = {
+        requestId: crypto.randomUUID(),
+        selectedAt,
+        deadlineAt: selectedAt + SCALE_SCAN_DEADLINE_MS,
+        inputBytes: Number(file?.size) || 0,
+        inputMimeType: mimeType,
+        prepareMs: 0,
+        cancelled: false,
+        expired: false
+      };
+      activeScaleScanContext = context;
 
       hideConfirmInModalErrors();
+      const scanState = document.getElementById('confirmScanState');
+      const title = document.getElementById('scanStatusTitle');
+      const message = document.getElementById('scanStatusMessage');
+      const progress = document.getElementById('scanProgressCircle');
       if (scanState) scanState.classList.remove('hidden');
-      if (saveBtn) saveBtn.disabled = true;
+      if (title) title.textContent = '正在处理图片…';
+      if (message) message.textContent = '图片转换和识别共用20秒时限';
+      if (progress) progress.style.strokeDashoffset = '0';
 
-      scanCountdownSeconds = 20;
-      if (scanCountdownText) scanCountdownText.textContent = `${scanCountdownSeconds}s`;
-      if (scanProgressCircle) {
-        scanProgressCircle.style.strokeDashoffset = '0';
-      }
-
-      if (scanCountdownTimer) clearInterval(scanCountdownTimer);
-      scanCountdownTimer = setInterval(() => {
-        scanCountdownSeconds -= 1;
-        if (scanCountdownText) scanCountdownText.textContent = `${Math.max(0, scanCountdownSeconds)}s`;
-        if (scanProgressCircle) {
-          const progress = (20 - scanCountdownSeconds) / 20;
-          scanProgressCircle.style.strokeDashoffset = `${175.9 * progress}`;
-        }
-        if (scanCountdownSeconds <= 0) {
+      const updateCountdown = () => {
+        if (activeScaleScanContext !== context) return;
+        const remainingMs = Math.max(0, context.deadlineAt - performance.now());
+        scanCountdownSeconds = Math.ceil(remainingMs / 1000);
+        const countdown = document.getElementById('scanCountdownText');
+        if (countdown) countdown.textContent = `${scanCountdownSeconds}s`;
+        if (progress) progress.style.strokeDashoffset = `${175.9 * (1 - remainingMs / SCALE_SCAN_DEADLINE_MS)}`;
+        if (remainingMs <= 0 && scanCountdownTimer) {
           clearInterval(scanCountdownTimer);
           scanCountdownTimer = null;
         }
-      }, 1000);
+      };
+      updateCountdown();
+      scanCountdownTimer = setInterval(updateCountdown, 250);
+      scanDeadlineTimer = setTimeout(() => {
+        if (activeScaleScanContext !== context) return;
+        context.expired = true;
+        if (ocrAbortController) ocrAbortController.abort();
+        if (scanCountdownTimer) clearInterval(scanCountdownTimer);
+        scanCountdownTimer = null;
+        showTimeoutErrorState();
+      }, SCALE_SCAN_DEADLINE_MS);
+      return context;
+    }
 
-      ocrAbortController = new AbortController();
+    function estimateDataUrlBytes(dataUrl) {
+      const encoded = String(dataUrl || '').split(',')[1] || '';
+      return Math.max(0, Math.floor(encoded.length * 3 / 4) - (encoded.endsWith('==') ? 2 : encoded.endsWith('=') ? 1 : 0));
+    }
+
+    async function startScanRecognition(base64Image, context = null) {
+      const scanContext = context || createScaleScanContext(null);
+      currentParsedImageBase64 = base64Image;
+
+      const scanState = document.getElementById('confirmScanState');
+      const title = document.getElementById('scanStatusTitle');
+      const message = document.getElementById('scanStatusMessage');
+      const saveBtn = document.getElementById('btnSaveConfirm');
+      const weightInput = document.getElementById('confirmWeightInput');
+      const confidence = document.getElementById('aiDetectConfidence');
+      const imageBytes = estimateDataUrlBytes(base64Image);
+
+      if (performance.now() >= scanContext.deadlineAt) scanContext.expired = true;
+      hideConfirmInModalErrors();
+      if (scanState) scanState.classList.remove('hidden');
+      if (title) title.textContent = '正在识别体重数据…';
+      if (message) message.textContent = '识别服务处理中，超时可重试';
+      if (saveBtn) saveBtn.disabled = true;
+      if (scanContext.expired) {
+        showTimeoutErrorState();
+        if (saveBtn) saveBtn.disabled = false;
+        clearScaleScanTimers(scanContext);
+        return;
+      }
+
+      const controller = new AbortController();
+      ocrAbortController = controller;
+      const requestStartedAt = performance.now();
+      console.info(JSON.stringify({
+        event: 'scale_ocr_client_request', requestId: scanContext.requestId,
+        prepareMs: scanContext.prepareMs, inputBytes: scanContext.inputBytes,
+        imageBytes, mimeType: scanContext.inputMimeType
+      }));
 
       try {
         const res = await fetch(`${API_BASE}/api/ai/analyze-scale`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', ...CloudStorageAdapter.getCustomHeaders() },
           credentials: 'include',
-          signal: ocrAbortController.signal,
-          body: JSON.stringify({ imageBase64: base64Image })
+          signal: controller.signal,
+          body: JSON.stringify({
+            imageBase64: base64Image,
+            requestId: scanContext.requestId,
+            clientPrepareMs: scanContext.prepareMs,
+            clientInputBytes: scanContext.inputBytes,
+            clientImageBytes: imageBytes,
+            clientMimeType: scanContext.inputMimeType
+          })
         });
 
         const data = await res.json().catch(() => ({}));
-
-        if (scanCountdownTimer) {
-          clearInterval(scanCountdownTimer);
-          scanCountdownTimer = null;
-        }
+        console.info(JSON.stringify({
+          event: 'scale_ocr_client_response', requestId: scanContext.requestId,
+          serverRequestId: data.requestId || res.headers.get('X-Request-ID') || null,
+          status: res.status, apiRoundTripMs: Math.round(performance.now() - requestStartedAt),
+          model: data.model || null, error: data.error || null
+        }));
 
         if (!res.ok) {
           if (data.error === 'UNSUPPORTED_IMAGE_TYPE' || data.error === 'IMAGE_PROCESS_FAILED') {
-            // State 06: 图片无法处理
             showUnsupportedErrorState();
             return;
           }
-          if (data.error === 'AI_TIMEOUT' || res.status === 504) {
-            // State 05: 识别超时
+          if (data.error === 'AI_UPSTREAM_TIMEOUT' || data.error === 'AI_TIMEOUT' || res.status === 504) {
             showTimeoutErrorState();
             return;
           }
@@ -4326,37 +4397,36 @@
 
         const weight = Number(data.weight);
         if (Number.isFinite(weight) && weight > 0) {
-          if (weightInput && !weightInput.value) {
-            weightInput.value = weight;
-          }
-          if (confidence) {
-            confidence.textContent = `AI 视觉置信度: 99% (${data.model || 'MiniMax/Gemini'} 识别)`;
-          }
+          if (weightInput && !weightInput.value) weightInput.value = weight;
+          if (confidence) confidence.textContent = `AI 视觉置信度: 99% (${data.model || 'MiniMax/Gemini'} 识别)`;
           hideConfirmInModalErrors();
           showToast('秤面重量自动识别成功！');
         } else {
           showTimeoutErrorState();
         }
       } catch (err) {
-        if (scanCountdownTimer) {
-          clearInterval(scanCountdownTimer);
-          scanCountdownTimer = null;
-        }
-        if (err.name === 'AbortError') {
-          showTimeoutErrorState();
-        } else {
-          console.warn('AI OCR error:', err);
-          showTimeoutErrorState();
-        }
+        if (scanContext.cancelled) return;
+        console.warn(JSON.stringify({
+          event: 'scale_ocr_client_error', requestId: scanContext.requestId,
+          error: err?.name === 'AbortError' ? (scanContext.expired ? 'deadline_exceeded' : 'aborted') : 'request_failed',
+          apiRoundTripMs: Math.round(performance.now() - requestStartedAt)
+        }));
+        showTimeoutErrorState();
       } finally {
         if (saveBtn) saveBtn.disabled = false;
-        ocrAbortController = null;
+        if (ocrAbortController === controller) ocrAbortController = null;
+        clearScaleScanTimers(scanContext);
       }
     }
 
     function showTimeoutErrorState() {
       hideConfirmInModalErrors();
       const timeoutErr = document.getElementById('confirmTimeoutError');
+      const requestLabel = document.getElementById('scanRequestId');
+      if (requestLabel && activeScaleScanContext?.requestId) {
+        requestLabel.textContent = '诊断编号：' + activeScaleScanContext.requestId;
+        requestLabel.classList.remove('hidden');
+      }
       if (timeoutErr) timeoutErr.classList.remove('hidden');
     }
 
@@ -4404,7 +4474,9 @@
     const btnCancelScan = document.getElementById('btnCancelScan');
     if (btnCancelScan) {
       btnCancelScan.onclick = () => {
+        if (activeScaleScanContext) activeScaleScanContext.cancelled = true;
         if (ocrAbortController) ocrAbortController.abort();
+        clearScaleScanTimers(activeScaleScanContext);
         hideConfirmInModalErrors();
       };
     }
@@ -4441,6 +4513,7 @@
     async function processSelectedImage(file) {
       if (!file) return;
       closePhotoSourceSheet();
+      const scanContext = createScaleScanContext(file);
 
       // 显示图片卡片与即时缩略图
       const imageCard = document.getElementById('confirmImageCard');
@@ -4465,14 +4538,38 @@
 
       try {
         const compressedBase64 = await compressScaleImage(file);
+        scanContext.prepareMs = Math.round(performance.now() - scanContext.selectedAt);
+        scanContext.clientImageBytes = estimateDataUrlBytes(compressedBase64);
+        console.info(JSON.stringify({
+          event: 'scale_ocr_client_prepared', requestId: scanContext.requestId,
+          prepareMs: scanContext.prepareMs, inputBytes: scanContext.inputBytes,
+          imageBytes: scanContext.clientImageBytes, mimeType: scanContext.inputMimeType
+        }));
+        if (scanContext.cancelled) return;
+        if (scanContext.expired || performance.now() >= scanContext.deadlineAt) {
+          scanContext.expired = true;
+          showTimeoutErrorState();
+          return;
+        }
         currentParsedImageBase64 = compressedBase64;
         if (thumb) thumb.src = compressedBase64;
-
-        // 开始识别
-        await startScanRecognition(compressedBase64);
+        const title = document.getElementById('scanStatusTitle');
+        const message = document.getElementById('scanStatusMessage');
+        if (title) title.textContent = '正在识别体重数据…';
+        if (message) message.textContent = '图片已压缩，正在请求识别服务';
+        await startScanRecognition(compressedBase64, scanContext);
       } catch (err) {
-        console.warn('Image process error:', err);
-        showUnsupportedErrorState();
+        if (scanContext.cancelled) return;
+        if (scanContext.expired || performance.now() >= scanContext.deadlineAt) {
+          scanContext.expired = true;
+          showTimeoutErrorState();
+        } else {
+          console.warn(JSON.stringify({ event: 'scale_ocr_client_preparation_failed', requestId: scanContext.requestId, error: err?.name || 'image_processing_failed' }));
+          showUnsupportedErrorState();
+        }
+      } finally {
+        URL.revokeObjectURL(objectUrl);
+        clearScaleScanTimers(scanContext);
       }
     }
 
@@ -4483,21 +4580,23 @@
       const isHeic = file.name.match(/\.(heic|heif)$/i) || file.type.includes('heic') || file.type.includes('heif');
       if (isHeic && typeof window.heic2any === 'function') {
         try {
-          targetBlob = await window.heic2any({
+          const converted = await window.heic2any({
             blob: file,
             toType: 'image/jpeg',
-            quality: 0.8
+            quality
           });
+          targetBlob = Array.isArray(converted) ? converted[0] : converted;
         } catch (heicErr) {
           console.warn('heic2any fallback skipped', heicErr);
         }
       }
 
       return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = (e) => {
-          const img = new Image();
-          img.onload = () => {
+        const sourceUrl = URL.createObjectURL(targetBlob);
+        const img = new Image();
+        const cleanup = () => URL.revokeObjectURL(sourceUrl);
+        img.onload = () => {
+          try {
             let w = img.width;
             let h = img.height;
             if (w > maxDimension || h > maxDimension) {
@@ -4513,18 +4612,28 @@
             canvas.width = w;
             canvas.height = h;
             const ctx = canvas.getContext('2d');
+            if (!ctx) throw new Error('CANVAS_CONTEXT_UNAVAILABLE');
             ctx.drawImage(img, 0, 0, w, h);
-            const dataUrl = canvas.toDataURL('image/jpeg', quality);
-            resolve(dataUrl);
-          };
-          img.onerror = () => {
-            // 兜底返回原生 DataURL
-            resolve(e.target.result);
-          };
-          img.src = e.target.result;
+            cleanup();
+            const fallback = () => {
+              try { resolve(canvas.toDataURL('image/jpeg', quality)); }
+              catch (error) { reject(error); }
+            };
+            if (typeof canvas.toBlob !== 'function') { fallback(); return; }
+            canvas.toBlob(blob => {
+              if (!blob) { fallback(); return; }
+              const reader = new FileReader();
+              reader.onload = () => resolve(String(reader.result || ''));
+              reader.onerror = () => reject(reader.error || new Error('JPEG_ENCODE_FAILED'));
+              reader.readAsDataURL(blob);
+            }, 'image/jpeg', quality);
+          } catch (error) {
+            cleanup();
+            reject(error);
+          }
         };
-        reader.onerror = reject;
-        reader.readAsDataURL(targetBlob);
+        img.onerror = () => { cleanup(); reject(new Error('IMAGE_DECODE_FAILED')); };
+        img.src = sourceUrl;
       });
     }
 
@@ -5127,7 +5236,7 @@
       document.getElementById('btnCloseHealthManageFooter').onclick = () => closeHealthModal('healthManageModal');
       document.getElementById('btnAddHealthCalendar').onclick = async () => {
         if (!healthDocument?.calendar?.active) {
-          try { await commitHealthAction('resume-calendar'); healthCalendarLink = null; showToast('日历同步已恢复，请重新添加到iPhone'); }
+          try { await persistHealthAction('resume-calendar'); healthCalendarLink = null; showToast('日历同步已恢复，请重新添加到iPhone'); }
           catch (error) { showToast(error.message, 'error'); }
           return;
         }
@@ -5153,14 +5262,14 @@
         catch (error) { showToast('复制失败，请在iPhone中使用添加日历入口', 'error'); }
       };
       document.getElementById('btnConfirmCalendarSubscription').onclick = async () => {
-        try { await commitHealthAction('confirm-calendar'); healthCalendarLink = null; showToast('已记录你的日历订阅确认'); }
+        try { await persistHealthAction('confirm-calendar'); healthCalendarLink = null; showToast('已记录你的日历订阅确认'); }
         catch (error) { showToast(error.message, 'error'); }
       };
       document.getElementById('btnStopCalendarSync').onclick = () => showCyberConfirm({
         title: '停止健康日历后续同步？',
         message: '停止后，订阅不再提供后续事件。iPhone可能仍保留已缓存的旧事件，需在iPhone日历中取消订阅清除。',
         onConfirm: async () => {
-          try { await commitHealthAction('stop-calendar'); healthCalendarLink = null; closeHealthModal('healthManageModal'); showToast('已停止后续同步；请到iPhone日历取消订阅'); }
+          try { await persistHealthAction('stop-calendar'); healthCalendarLink = null; closeHealthModal('healthManageModal'); showToast('已停止后续同步；请到iPhone日历取消订阅'); }
           catch (error) { showToast(error.message, 'error'); }
         }
       });
@@ -5501,12 +5610,12 @@
       if ('caches' in window) {
         caches.keys().then(names => {
           for (let name of names) {
-            if (name !== 'tirz-tracker-v6.1') caches.delete(name);
+            if (name !== 'tirz-tracker-v6.2') caches.delete(name);
           }
         });
       }
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/sw.js?v=6.1', { updateViaCache: 'none' })
+        navigator.serviceWorker.register('/sw.js?v=6.2', { updateViaCache: 'none' })
           .then(reg => {
             reg.update();
             reg.onupdatefound = () => {

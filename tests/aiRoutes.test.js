@@ -110,7 +110,7 @@ test('caps each fallback timeout to the remaining total upstream budget', async 
     const body = await json(response);
     assert.equal(response.status, 200);
     assert.equal(body.weight, 170.3);
-    assert.deepEqual(delays, [8_000, 2_500]);
+    assert.deepEqual(delays, [5_000, 500]);
     assert.equal(calls, 2);
   } finally {
     globalThis.fetch = originalFetch;
@@ -246,7 +246,7 @@ test('maps upstream geo-block rejections to AI_REGION_BLOCKED instead of an imag
     assert.equal(response.status, 502);
     assert.equal(body.error, 'AI_REGION_BLOCKED');
     assert.match(body.message, /网络/);
-    assert.equal(attempts, 4); // both models on both endpoints
+    assert.equal(attempts, 2); // one model on Vertex, then one bounded public-endpoint fallback
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -307,5 +307,55 @@ test('maps Gemini authentication failures to an actionable error', async () => {
     assert.equal(body.message, 'unauthorized');
   } finally {
     globalThis.fetch = originalFetch;
+  }
+});
+
+test('does not send permanent MiniMax 400 errors through the full Gemini retry chain', async () => {
+  const originalFetch = globalThis.fetch;
+  const calledUrls = [];
+  globalThis.fetch = async input => {
+    calledUrls.push(String(input));
+    return new Response(JSON.stringify({ error: { message: 'invalid image payload' } }), { status: 400 });
+  };
+  try {
+    const response = await handleAIRoutes(request({ imageBase64 }), { MINIMAX_API_KEY: 'mmx-key', GEMINI_API_KEY: 'server-key' }, url);
+    const body = await json(response);
+    assert.equal(response.status, 502);
+    assert.equal(body.error, 'AI_BAD_REQUEST');
+    assert.equal(calledUrls.length, 1);
+    assert.equal(calledUrls[0], 'https://api.minimaxi.com/v1/chat/completions');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('correlates client image preparation metrics with Worker request logs', async () => {
+  const originalFetch = globalThis.fetch;
+  const originalLog = console.log;
+  const logLines = [];
+  globalThis.fetch = async () => new Response(JSON.stringify({
+    candidates: [{ content: { parts: [{ text: '{"weight":170.3,"unit":"斤"}' }] } }]
+  }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  console.log = line => logLines.push(String(line));
+  try {
+    const response = await handleAIRoutes(request({
+      imageBase64,
+      requestId: '01234567-89ab-4cde-8fab-0123456789ab',
+      clientPrepareMs: 1240,
+      clientInputBytes: 1_234_567,
+      clientImageBytes: 24_000,
+      clientMimeType: 'image/heic'
+    }), { GEMINI_API_KEY: 'server-key' }, url);
+    assert.equal(response.status, 200);
+    assert.equal((await json(response)).requestId, '01234567-89ab-4cde-8fab-0123456789ab');
+    const start = logLines.map(line => JSON.parse(line)).find(event => event.event === 'ai_request_started');
+    assert.equal(start.requestId, '01234567-89ab-4cde-8fab-0123456789ab');
+    assert.equal(start.clientPrepareMs, 1240);
+    assert.equal(start.clientInputBytes, 1_234_567);
+    assert.equal(start.clientImageBytes, 24_000);
+    assert.equal(start.clientMimeType, 'image/heic');
+  } finally {
+    globalThis.fetch = originalFetch;
+    console.log = originalLog;
   }
 });

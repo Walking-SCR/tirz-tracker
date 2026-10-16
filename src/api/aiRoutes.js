@@ -4,9 +4,9 @@
 // 浏览器端永不携带 API Key：密钥仅保存在 Worker Secrets 中。
 
 const MAX_IMAGE_BASE64_LENGTH = 4_000_000;
-const UPSTREAM_TIMEOUT_MS = 8_000;
-// 整条上游重试链路的硬性时间上限，确保 Worker 总能在前端 20 秒中断之前返回
-const TOTAL_UPSTREAM_BUDGET_MS = 12_000;
+const UPSTREAM_TIMEOUT_MS = 5_000;
+// 上游最多一个主通道和两个同模型 Gemini 端点，限制串行回退的总等待时间。
+const TOTAL_UPSTREAM_BUDGET_MS = 10_000;
 // MiniMax 国内平台（OpenAI 兼容的 Chat Completions 接口）
 const MINIMAX_API_URL = 'https://api.minimaxi.com/v1/chat/completions';
 const MINIMAX_MODEL = 'MiniMax-M3';
@@ -66,10 +66,25 @@ function getRemainingUpstreamBudgetMs(startedAt) {
   return Math.max(0, TOTAL_UPSTREAM_BUDGET_MS - (Date.now() - startedAt));
 }
 
+function boundedClientMetric(value, max) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 0 && parsed <= max ? Math.round(parsed) : undefined;
+}
+
+function isRequestId(value) {
+  return typeof value === 'string' && /^[a-z0-9][a-z0-9._-]{0,79}$/i.test(value);
+}
+
+function shouldUseProviderFallback(status) {
+  // 402 表示当前提供商余额/额度不可用，切换供应商仍可能成功。
+  return [402, 408, 409, 425, 429].includes(status) || status >= 500;
+}
+
 export async function handleAIRoutes(request, env, url, session) {
   if (url.pathname !== '/api/ai/analyze-scale' || request.method !== 'POST') return null;
 
-  const requestId = request.headers.get('X-Request-ID') || crypto.randomUUID();
+  const headerRequestId = request.headers.get('X-Request-ID');
+  let requestId = isRequestId(headerRequestId) ? headerRequestId : crypto.randomUUID();
   const startedAt = Date.now();
   let body;
   try {
@@ -78,6 +93,15 @@ export async function handleAIRoutes(request, env, url, session) {
     logEvent('warn', 'ai_request_rejected', { requestId, reason: 'invalid_json' });
     return jsonResponse({ error: 'INVALID_JSON', message: '请求格式不合法' }, 400, requestId);
   }
+
+  if (!isRequestId(headerRequestId) && isRequestId(body?.requestId)) requestId = body.requestId;
+  const requestParsedAt = Date.now();
+  const clientPrepareMs = boundedClientMetric(body?.clientPrepareMs, 120_000);
+  const clientInputBytes = boundedClientMetric(body?.clientInputBytes, 100_000_000);
+  const clientImageBytes = boundedClientMetric(body?.clientImageBytes, 10_000_000);
+  const clientMimeType = typeof body?.clientMimeType === 'string' && /^image\/[a-z0-9.+-]{1,32}$/i.test(body.clientMimeType)
+    ? body.clientMimeType.toLowerCase()
+    : undefined;
 
   const { imageBase64 } = body || {};
   if (!imageBase64 || typeof imageBase64 !== 'string') {
@@ -109,7 +133,12 @@ export async function handleAIRoutes(request, env, url, session) {
     return jsonResponse({ error: 'AI_NOT_CONFIGURED', message: '服务器尚未配置 AI 识别服务' }, 503, requestId);
   }
 
-  logEvent('info', 'ai_request_started', { requestId, mimeType, imageBase64Length: pureBase64.length, primary: minimaxKey ? 'minimax' : 'gemini' });
+  logEvent('info', 'ai_request_started', {
+    requestId, mimeType, imageBase64Length: pureBase64.length,
+    clientImageBytes, clientInputBytes,
+    clientMimeType, clientPrepareMs, requestParseMs: requestParsedAt - startedAt,
+    primary: minimaxKey ? 'minimax' : 'gemini'
+  });
   const prompt = `Extract the weight number from this digital bathroom scale photo (white/colored LED digits under glass or LCD 7-segment display). Return ONLY valid JSON: {"weight": number, "unit": "斤"}. Example: {"weight": 168.5, "unit": "斤"}`;
   let lastError = null;
   let lastStatus = 502;
@@ -118,6 +147,7 @@ export async function handleAIRoutes(request, env, url, session) {
   let lastUpstreamReason = '';
   let timeoutCount = 0;
   let attemptCount = 0;
+  let useGeminiFallback = true;
 
   // --- 主通道：MiniMax-M3（HEIC/HEIF 无法解码，直接跳过）---
   if (minimaxKey && MINIMAX_SUPPORTED_MIME.test(mimeType)) {
@@ -159,6 +189,7 @@ export async function handleAIRoutes(request, env, url, session) {
             reason: String(lastUpstreamReason).replace(/[\r\n]+/g, ' ').slice(0, 240),
             durationMs: Date.now() - attemptStartedAt
           });
+          if (!shouldUseProviderFallback(res.status)) useGeminiFallback = false;
         } else {
           const data = await res.json();
           const parsed = extractJson(data.choices?.[0]?.message?.content);
@@ -183,10 +214,10 @@ export async function handleAIRoutes(request, env, url, session) {
   }
 
   // --- 回退链路：先经 Vertex AI，再走公网端点 ---
-  const modelsToTry = ['gemini-flash-lite-latest', 'gemini-3.1-flash-lite'];
+  const modelsToTry = ['gemini-flash-lite-latest'];
 
   attemptLoop:
-  for (const endpoint of GEMINI_ENDPOINTS) {
+  if (useGeminiFallback) for (const endpoint of GEMINI_ENDPOINTS) {
     for (const model of modelsToTry) {
       if (!geminiKey) break attemptLoop;
       const remainingBudgetMs = getRemainingUpstreamBudgetMs(startedAt);
@@ -225,7 +256,12 @@ export async function handleAIRoutes(request, env, url, session) {
             reason: String(lastUpstreamReason).replace(/[\r\n]+/g, ' ').slice(0, 240),
             durationMs: Date.now() - modelStartedAt
           });
-          continue;
+          const geoBlockedAtEndpoint = /location is not supported/i.test(lastUpstreamReason);
+          const canTryPublicEndpoint = endpoint.name === 'vertex' && (
+            [404, 408, 429].includes(res.status) || res.status >= 500 || geoBlockedAtEndpoint
+          );
+          if (canTryPublicEndpoint) continue;
+          break attemptLoop;
         }
         const data = await res.json();
         const parsed = extractJson(data.candidates?.[0]?.content?.parts?.[0]?.text);
