@@ -400,9 +400,55 @@ test('goal summary handles no data, invalid measurements, reaching and exceeding
   assert.match(html, /id="statGoalGap"/);
 });
 
-test('Service Worker cache version is v6.3 in sw.js and public/sw.js', () => {
+test('mobile goal strip is centered with symmetric spacing and keeps timeline target sizes', () => {
+  const html = fs.readFileSync('index.html', 'utf8');
+  assert.match(html, /\.goal-gap-summary\s*\{[^}]*justify-content: center;[^}]*align-items: center;[^}]*padding: 9px 0;/);
+  assert.match(html, /#metricsSummary\s*\{ padding-bottom: 0; \}/);
+  assert.match(html, /#timelineViewport\s*\{ min-height: 106px;/);
+  assert.match(html, /class="w-10 h-10 rounded-full/);
+  assert.match(html, /visualViewport\?\.addEventListener\('resize', scheduleWeightFirstScreenFit\)/);
+});
+
+test('mobile first-screen fitting reserves navigation space without shrinking the timeline', () => {
+  const html = fs.readFileSync('index.html', 'utf8');
+  const script = [...html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/g)].sort((a, b) => b[1].length - a[1].length)[0][1];
+  const ast = parse(script, { ecmaVersion: 'latest' });
+  const names = ['calculateFirstScreenChartHeight', 'fitWeightFirstScreen'];
+  const source = names.map(name => { const fn = ast.body.find(node => node.type === 'FunctionDeclaration' && node.id.name === name); return script.slice(fn.start, fn.end); }).join('\n');
+  for (const example of [
+    { bottom: 930, navTop: 887, scrollY: 0, expected: 'full' },
+    { bottom: 880, navTop: 853, scrollY: 0, expected: 'full' },
+    { bottom: 900, navTop: 887, scrollY: 80, expected: 'full' },
+    { bottom: 1050, navTop: 650, scrollY: 0, expected: 'scroll' }
+  ]) {
+    let height = 252;
+    let resizeCount = 0;
+    const chart = {
+      dataset: {},
+      style: { setProperty(_name, value) { height = parseFloat(value); }, removeProperty() { return ''; } },
+      getBoundingClientRect() { return { height, width: 408 }; }
+    };
+    const nodes = {
+      weightPage: { classList: { contains() { return false; } } },
+      weightTrendChart: chart,
+      treatmentTimeline: { classList: { contains() { return false; } }, getBoundingClientRect() { return { bottom: example.bottom - example.scrollY + height - 252 }; } },
+      appBottomNav: { getBoundingClientRect() { return { top: example.navTop }; } }
+    };
+    new Function('document', 'window', 'chartInstance', source + ';fitWeightFirstScreen();')(
+      { getElementById: id => nodes[id] },
+      { innerWidth: 440, scrollY: example.scrollY, visualViewport: { scale: 1 } },
+      { resize() { resizeCount += 1; } }
+    );
+    assert.ok(height >= 176 && height <= 280);
+    assert.equal(chart.dataset.firstScreenFit, example.expected);
+    assert.equal(resizeCount, 1);
+    if (example.expected === 'full') assert.ok(nodes.treatmentTimeline.getBoundingClientRect().bottom + example.scrollY <= example.navTop - 12);
+  }
+});
+
+test('Service Worker cache version is v6.4 in sw.js and public/sw.js', () => {
   const rootSw = fs.readFileSync('sw.js', 'utf-8');
   const publicSw = fs.readFileSync('public/sw.js', 'utf-8');
-  assert.ok(rootSw.includes('tirz-tracker-v6.3'), 'sw.js must contain cache v6.3');
-  assert.ok(publicSw.includes('tirz-tracker-v6.3'), 'public/sw.js must contain cache v6.3');
+  assert.ok(rootSw.includes('tirz-tracker-v6.4'), 'sw.js must contain cache v6.4');
+  assert.ok(publicSw.includes('tirz-tracker-v6.4'), 'public/sw.js must contain cache v6.4');
 });
