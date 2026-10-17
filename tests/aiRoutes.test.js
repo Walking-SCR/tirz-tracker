@@ -110,7 +110,7 @@ test('caps each fallback timeout to the remaining total upstream budget', async 
     const body = await json(response);
     assert.equal(response.status, 200);
     assert.equal(body.weight, 170.3);
-    assert.deepEqual(delays, [5_000, 500]);
+    assert.deepEqual(delays, [12_000, 7_500]);
     assert.equal(calls, 2);
   } finally {
     globalThis.fetch = originalFetch;
@@ -357,5 +357,61 @@ test('correlates client image preparation metrics with Worker request logs', asy
   } finally {
     globalThis.fetch = originalFetch;
     console.log = originalLog;
+  }
+});
+
+test('a valid model result after six seconds is not rejected by the old five-second cutoff', async () => {
+  const originalFetch = globalThis.fetch;
+  const originalNow = Date.now;
+  const originalSet = globalThis.setTimeout;
+  const originalClear = globalThis.clearTimeout;
+  try {
+    for (const withFallback of [true, false]) {
+      let clock = 1000;
+      const delays = [];
+      Date.now = () => clock;
+      globalThis.setTimeout = (_callback, delay) => { delays.push(delay); return 1; };
+      globalThis.clearTimeout = () => {};
+      globalThis.fetch = async () => {
+        clock += 6000;
+        return new Response(JSON.stringify({ choices: [{ message: { content: '{"weight":169.5,"unit":"斤"}' } }] }), { status: 200 });
+      };
+      const response = await handleAIRoutes(request({ imageBase64 }), {
+        MINIMAX_API_KEY: 'test-only', ...(withFallback ? { GEMINI_API_KEY: 'test-only' } : {})
+      }, url);
+      assert.equal(response.status, 200);
+      assert.equal((await response.json()).weight, 169.5);
+      assert.deepEqual(delays, [withFallback ? 12_000 : 17_000]);
+    }
+  } finally {
+    globalThis.fetch = originalFetch; Date.now = originalNow;
+    globalThis.setTimeout = originalSet; globalThis.clearTimeout = originalClear;
+  }
+});
+
+test('server budget deducts client preparation time and preserves time to return the response', async () => {
+  const originalFetch = globalThis.fetch;
+  const originalNow = Date.now;
+  const originalSet = globalThis.setTimeout;
+  const originalClear = globalThis.clearTimeout;
+  let clock = 1000;
+  const delays = [];
+  let calls = 0;
+  Date.now = () => clock;
+  globalThis.setTimeout = (_callback, delay) => { delays.push(delay); return 1; };
+  globalThis.clearTimeout = () => {};
+  globalThis.fetch = async () => {
+    calls += 1; clock += 4500;
+    throw new DOMException('aborted', 'AbortError');
+  };
+  try {
+    const response = await handleAIRoutes(request({ imageBase64, clientPrepareMs: 14_000, clientRemainingMs: 6000 }), { GEMINI_API_KEY: 'test-only' }, url);
+    assert.equal(response.status, 504);
+    assert.equal((await response.json()).error, 'AI_UPSTREAM_TIMEOUT');
+    assert.deepEqual(delays, [4500]);
+    assert.equal(calls, 1);
+  } finally {
+    globalThis.fetch = originalFetch; Date.now = originalNow;
+    globalThis.setTimeout = originalSet; globalThis.clearTimeout = originalClear;
   }
 });

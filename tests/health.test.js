@@ -8,6 +8,58 @@ const baseUrl = 'https://tracker.test/api/health';
 const signingKey = 'local-test-signing-key-not-a-production-secret';
 const token = { GITHUB_TOKEN: 'fake-token', GEMINI_API_KEY: 'fake-gemini-key', AUTH_SIGNING_KEY: signingKey };
 
+test('real health API accepts both frontend arrays and legacy keyed plans and reports configured calendars', async () => {
+  const originalFetch = globalThis.fetch;
+  const plans = [
+    { id: 'oral', times: ['08:10', '13:20', '20:30'], startDate: '2025-05-10' },
+    { id: 'topical', times: ['21:40'], startDate: '2025-05-09' },
+    { id: 'nail-lacquer', intervalDays: 3, time: '22:10', startDate: '2025-05-09' }
+  ];
+  try {
+    for (const input of [plans, Object.fromEntries(plans.map(plan => [plan.id, plan]))]) {
+      let stored = createEmptyHealthDocument();
+      stored.revision = 3;
+      stored.reports = [{ id: 'keep-existing-report', observations: [] }];
+      globalThis.fetch = async (_url, init = {}) => {
+        if (init.method === 'PUT') {
+          stored = JSON.parse(Buffer.from(JSON.parse(init.body).content, 'base64').toString('utf8'));
+          return new Response(JSON.stringify({ content: { sha: 'new-sha' } }), { status: 200 });
+        }
+        return new Response(JSON.stringify(githubFile(stored)), { status: 200 });
+      };
+      const response = await handleHealthRoutes(request('/api/health', 'PUT', {
+        action: 'save-plans', expectedRevision: 3, medicationPlans: input
+      }), token, new URL(baseUrl), session);
+      assert.equal(response.status, 200);
+      assert.equal(stored.revision, 4);
+      assert.equal(stored.reports[0].id, 'keep-existing-report');
+      assert.deepEqual(stored.medicationPlans[0].times, plans[0].times);
+      assert.deepEqual(stored.medicationPlans.map(plan => plan.cadence), ['daily-slots', 'daily', 'interval-days']);
+      const linkUrl = new URL(baseUrl + '/calendar-link');
+      const link = await handleHealthRoutes(new Request(linkUrl), token, linkUrl, session);
+      assert.equal((await link.json()).configured, true);
+      assert.equal((buildHealthCalendar(stored).match(/BEGIN:VEVENT/g) || []).length, 5);
+    }
+  } finally { globalThis.fetch = originalFetch; }
+});
+
+test('duplicate medication ids are rejected without overwriting stored plans', async () => {
+  const originalFetch = globalThis.fetch;
+  let writes = 0;
+  globalThis.fetch = async (_url, init = {}) => {
+    if (init.method === 'PUT') writes += 1;
+    return new Response(JSON.stringify(githubFile(createEmptyHealthDocument())), { status: 200 });
+  };
+  try {
+    const response = await handleHealthRoutes(request('/api/health', 'PUT', {
+      action: 'save-plans', expectedRevision: 0,
+      medicationPlans: [{ id: 'oral' }, { id: 'oral' }, { id: 'nail-lacquer' }]
+    }), token, new URL(baseUrl), session);
+    assert.equal(response.status, 400);
+    assert.equal(writes, 0);
+  } finally { globalThis.fetch = originalFetch; }
+});
+
 function githubFile(content, sha = 'health-sha-1') {
   return { content: Buffer.from(JSON.stringify(content)).toString('base64'), sha };
 }

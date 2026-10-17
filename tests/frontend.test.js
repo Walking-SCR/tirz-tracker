@@ -236,6 +236,8 @@ test('health plan save uses the persisted action and report list omits screensho
   const html = fs.readFileSync('index.html', 'utf8');
   assert.match(html, /persistHealthAction\('save-plans'/, 'Plan save must call the implemented health persistence method');
   assert.doesNotMatch(html, /commitHealthAction/, 'No stale health action function references may remain');
+  assert.match(html, /configured \? '调整用药计划'/, 'Configured plans must still have a visible edit entry');
+  assert.doesNotMatch(html, /setupButton\.classList\.toggle\('hidden', configured\)/);
   assert.doesNotMatch(html, /heading\.textContent = '来源 ' \+ report\.sourceOrder/, 'Report rows must not render the red-boxed source sequence');
   assert.doesNotMatch(html, /state\.textContent = report\.dateConfirmed \? '日期已核对'/, 'Report rows must not render the removed confirmation-status column');
 });
@@ -247,6 +249,51 @@ test('scale OCR deadline covers image preparation and has a real abort timer', (
   assert.match(html, /const scanContext = createScaleScanContext\(file\)/, 'The deadline must start before HEIC conversion and resize');
   assert.match(html, /requestId: scanContext\.requestId/);
   assert.match(html, /clientPrepareMs: scanContext\.prepareMs/);
+  assert.match(html, /clientRemainingMs:/);
+});
+
+test('OCR frontend does not label service, network or unreadable-result errors as a timeout', async () => {
+  const html = fs.readFileSync('index.html', 'utf8');
+  const script = [...html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/g)].sort((a, b) => b[1].length - a[1].length)[0][1];
+  const fn = parse(script, { ecmaVersion: 'latest' }).body.find(node => node.type === 'FunctionDeclaration' && node.id.name === 'startScanRecognition');
+  const cases = [
+    { status: 502, body: { error: 'AI_AUTH_FAILED', message: '识别服务认证失败' }, expected: 'error', message: '识别服务认证失败' },
+    { status: 504, body: { error: 'AI_UPSTREAM_TIMEOUT' }, expected: 'timeout' },
+    { status: 200, body: { weight: null }, expected: 'error', message: '未能从照片中读到体重数字' },
+    { networkError: true, expected: 'error', message: '无法连接识别服务' }
+  ];
+  for (const example of cases) {
+    const nodes = new Map();
+    const panels = [];
+    const document = { getElementById(id) {
+      if (!nodes.has(id)) nodes.set(id, { classList: { remove() {} }, value: '', textContent: '', disabled: false });
+      return nodes.get(id);
+    } };
+    const fakeFetch = async () => {
+      if (example.networkError) throw new TypeError('Failed to fetch');
+      return new Response(JSON.stringify(example.body), { status: example.status });
+    };
+    const run = new Function('document', 'fetch', 'performance', 'console', 'context', 'panels', `
+      let currentParsedImageBase64, ocrAbortController;
+      const API_BASE = '';
+      const CloudStorageAdapter = { getCustomHeaders: () => ({}) };
+      function estimateDataUrlBytes() { return 120; }
+      function hideConfirmInModalErrors() {}
+      function clearScaleScanTimers() {}
+      function showToast() {}
+      function showUnsupportedErrorState() { panels.push({ type: 'unsupported' }); }
+      function showTimeoutErrorState() { panels.push({ type: 'timeout' }); }
+      function showRecognitionErrorState(message) { panels.push({ type: 'error', message }); }
+      ${script.slice(fn.start, fn.end)}
+      return startScanRecognition('data:image/jpeg;base64,AAAA', context);
+    `);
+    await run(document, fakeFetch, { now: () => 1000 }, { info() {}, warn() {} }, {
+      requestId: 'test-ui', deadlineAt: 21000, prepareMs: 0, inputBytes: 120, inputMimeType: 'image/jpeg', cancelled: false, expired: false
+    }, panels);
+    assert.equal(panels.length, 1);
+    assert.equal(panels[0].type, example.expected);
+    if (example.message) assert.ok(panels[0].message.includes(example.message));
+  }
 });
 
 function trendPreviewHarness(records, range = 'all') {
@@ -255,6 +302,8 @@ function trendPreviewHarness(records, range = 'all') {
     .sort((a, b) => b[1].length - a[1].length)[0][1];
   const ast = parse(mainScript, { ecmaVersion: 'latest' });
   const render = ast.body.find(node => node.type === 'FunctionDeclaration' && node.id.name === 'renderTelemetryChart');
+  const stats = ast.body.find(node => node.type === 'FunctionDeclaration' && node.id.name === 'calculateStats');
+  const gap = ast.body.find(node => node.type === 'FunctionDeclaration' && node.id.name === 'formatGoalGapSummary');
   const elements = new Map();
   const attributes = {};
   const drawnLabels = [];
@@ -269,7 +318,7 @@ function trendPreviewHarness(records, range = 'all') {
   const canvas = { getContext: () => ctx, setAttribute: (key, value) => { attributes[key] = value; } };
   elements.set('weightChartCanvas', canvas);
   elements.set('trendSelectedDate', {});
-  elements.set('trendGoalGap', {});
+  for (const id of ['statGoalGap', 'statTargetWeight', 'statCurrentWeight', 'statTotalDrop']) elements.set(id, {});
   class MockChart {
     constructor(context, config) {
       this.ctx = context;
@@ -282,13 +331,13 @@ function trendPreviewHarness(records, range = 'all') {
     getDatasetMeta() { return { data: this.points }; }
     draw() { this.drawCount += 1; }
   }
-  const chart = new Function('document', 'weightRecords', 'trendRange', 'Chart',
-    'let chartInstance; ' + mainScript.slice(render.start, render.end) + '; renderTelemetryChart(); return chartInstance;'
-  )({ getElementById: id => elements.get(id) }, records, range, MockChart);
+  const chart = new Function('document', 'weightRecords', 'trendRange', 'Chart', 'TARGET_WEIGHT',
+    'let chartInstance; ' + mainScript.slice(gap.start, gap.end) + mainScript.slice(stats.start, stats.end) + mainScript.slice(render.start, render.end) + '; calculateStats(); renderTelemetryChart(); return chartInstance;'
+  )({ getElementById: id => elements.get(id) }, records, range, MockChart, 148);
   return { chart, canvas, elements, attributes, drawnLabels };
 }
 
-test('trend readout and goal gap update with touch and keyboard', () => {
+test('trend history selection leaves the latest-weight goal summary unchanged', () => {
   const records = Array.from({ length: 30 }, (_, index) => ({
     date: '2026-10-' + String(index + 1).padStart(2, '0'),
     timestamp: index + 1,
@@ -297,7 +346,7 @@ test('trend readout and goal gap update with touch and keyboard', () => {
   const { chart, canvas, elements, attributes } = trendPreviewHarness(records);
   assert.match(attributes['aria-valuetext'], /168\.9斤/);
   assert.doesNotMatch(fs.readFileSync('index.html', 'utf8'), /id="trendSelectedWeight"/);
-  assert.equal(elements.get('trendGoalGap').textContent, '距目标还差 20.9 斤');
+  assert.equal(elements.get('statGoalGap').textContent, '还差 20.9 斤');
   assert.match(elements.get('trendSelectedDate').textContent, /最新/);
   assert.equal(chart.config.options.plugins.tooltip.enabled, false);
   assert.equal(chart.config.options.scales.x.ticks.maxTicksLimit, 5);
@@ -307,7 +356,7 @@ test('trend readout and goal gap update with touch and keyboard', () => {
   const args = { event: { type: 'touchmove', x: 24, y: 60 } };
   plugin.afterEvent(chart, args);
   assert.match(attributes['aria-valuetext'], /174\.7斤/);
-  assert.equal(elements.get('trendGoalGap').textContent, '距目标还差 26.7 斤');
+  assert.equal(elements.get('statGoalGap').textContent, '还差 20.9 斤');
   assert.equal(attributes['aria-valuenow'], '0');
   assert.equal(args.changed, true);
   canvas.onkeydown({ key: 'End', preventDefault() {} });
@@ -341,16 +390,19 @@ test('trend key labels remain sparse, inside the plot and separated for dense re
   }
 });
 
-test('trend goal gap handles no data, reaching the goal and going below it', () => {
-  assert.equal(trendPreviewHarness([]).elements.get('trendGoalGap').textContent, '距目标 -- 斤');
-  for (const [weight, expected] of [[148, '已达到目标'], [147.8, '低于目标 0.2 斤']]) {
-    assert.equal(trendPreviewHarness([{ date: '2026-10-15', timestamp: 1, weight }]).elements.get('trendGoalGap').textContent, expected);
+test('goal summary handles no data, invalid measurements, reaching and exceeding the target', () => {
+  assert.equal(trendPreviewHarness([]).elements.get('statGoalGap').textContent, '暂无最新体重');
+  for (const [weight, expected] of [[148, '已达到目标体重'], [147.8, '已低于目标 0.2 斤']]) {
+    assert.equal(trendPreviewHarness([{ date: '2026-10-15', timestamp: 1, weight }]).elements.get('statGoalGap').textContent, expected);
   }
+  const html = fs.readFileSync('index.html', 'utf8');
+  assert.doesNotMatch(html, /id="trendGoalGap"/);
+  assert.match(html, /id="statGoalGap"/);
 });
 
-test('Service Worker cache version is v6.2 in sw.js and public/sw.js', () => {
+test('Service Worker cache version is v6.3 in sw.js and public/sw.js', () => {
   const rootSw = fs.readFileSync('sw.js', 'utf-8');
   const publicSw = fs.readFileSync('public/sw.js', 'utf-8');
-  assert.ok(rootSw.includes('tirz-tracker-v6.2'), 'sw.js must contain cache v6.2');
-  assert.ok(publicSw.includes('tirz-tracker-v6.2'), 'public/sw.js must contain cache v6.2');
+  assert.ok(rootSw.includes('tirz-tracker-v6.3'), 'sw.js must contain cache v6.3');
+  assert.ok(publicSw.includes('tirz-tracker-v6.3'), 'public/sw.js must contain cache v6.3');
 });

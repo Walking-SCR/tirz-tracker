@@ -120,7 +120,9 @@
 
     .trend-readout-date { color: #93A4B8; font-size: 11px; }
     .trend-readout-target { display: flex; flex-direction: column; align-items: flex-end; gap: 5px; flex-shrink: 0; }
-    .trend-goal-gap { color: #27F2C3; font-size: 11px; white-space: nowrap; }
+    .goal-gap-summary { display: flex; justify-content: center; align-items: baseline; gap: 10px; margin-top: 4px; padding-top: 4px; border-top: 1px solid rgba(145,166,190,.16); font-variant-numeric: tabular-nums; }
+    .goal-gap-summary__label { color: #93A4B8; font-size: 12px; }
+    .goal-gap-summary__value { color: #27F2C3; font-size: 18px; font-weight: 700; line-height: 1.1; }
     .trend-target-legend { display: flex; align-items: center; gap: 5px; color: #93A4B8; font-size: 11px; white-space: nowrap; flex-shrink: 0; }
     .trend-target-legend::before { content: ''; width: 14px; border-top: 2px dashed #27F2C3; }
     .trend-chart-plot { flex: 1; min-height: 0; position: relative; }
@@ -396,7 +398,8 @@
   <main class="max-w-md mx-auto px-4 pt-1 space-y-5">
 
     <!-- 02 关键指标：三列共享指标卡 -->
-    <section id="metricsSummary" class="glass-surface rounded-2xl p-4 grid grid-cols-3 divide-x divide-[rgba(145,166,190,0.18)] text-center shadow-[0_4px_20px_rgba(0,0,0,0.35)]">
+    <section id="metricsSummary" class="glass-surface rounded-2xl p-4 text-center shadow-[0_4px_20px_rgba(0,0,0,0.35)]">
+      <div class="grid grid-cols-3 divide-x divide-[rgba(145,166,190,0.18)]">
       <div class="px-1">
         <div class="text-sm font-mono text-cyberTextDim">目标体重</div>
         <div class="text-3xl font-mono font-black text-white mt-1 leading-none">
@@ -414,6 +417,11 @@
         <div class="text-3xl font-mono font-black text-cyberPurple mt-1 leading-none">
           <span id="statTotalDrop">--</span><span class="text-xs font-normal text-cyberTextDim ml-0.5">斤</span>
         </div>
+      </div>
+      </div>
+      <div class="goal-gap-summary font-mono" role="status" aria-live="polite">
+        <span class="goal-gap-summary__label">距离目标</span>
+        <span id="statGoalGap" class="goal-gap-summary__value">暂无最新体重</span>
       </div>
     </section>
 
@@ -437,7 +445,6 @@
           </div>
           <div class="trend-readout-target">
             <span class="trend-target-legend">目标 148 斤</span>
-            <span id="trendGoalGap" class="trend-goal-gap">距目标 -- 斤</span>
           </div>
         </div>
         <div class="trend-chart-plot">
@@ -826,7 +833,7 @@
           </div>
           <div>
             <div class="text-sm font-bold text-white font-mono">识别超时，请重试</div>
-            <p class="text-xs text-neutral-300 mt-1">我们未能在20秒内识别出体重，请重新识别或手动输入。</p>
+            <p class="text-xs text-neutral-300 mt-1">本次识别未在可用时间内完成，请重试或手动输入。</p>
             <p id="scanRequestId" class="hidden mt-2 text-[10px] text-neutral-500 font-mono break-all"></p>
           </div>
           <div class="flex gap-2">
@@ -840,6 +847,17 @@
           <button id="btnCancelTimeout" type="button" class="text-xs font-mono text-cyberTextDim hover:text-white">
             取消
           </button>
+        </div>
+
+        <div id="confirmRecognitionError" class="hidden p-4 rounded-2xl bg-red-500/10 border border-red-500/30 text-center space-y-3" role="alert">
+          <div class="text-sm font-bold text-white font-mono">识别未完成</div>
+          <p id="recognitionErrorMessage" class="text-xs text-neutral-300 leading-relaxed break-words"></p>
+          <p id="recognitionRequestId" class="text-[10px] text-neutral-500 font-mono break-all"></p>
+          <div class="flex gap-2">
+            <button id="btnRetryRecognitionError" type="button" class="flex-1 py-2 rounded-xl bg-cyberNeon text-[#06111F] text-xs font-bold font-mono">重试识别</button>
+            <button id="btnManualRecognitionError" type="button" class="flex-1 py-2 rounded-xl bg-white/10 text-white text-xs font-mono">手动输入</button>
+          </div>
+          <button id="btnCancelRecognitionError" type="button" class="text-xs font-mono text-cyberTextDim">取消</button>
         </div>
 
         <!-- 06 图片无法处理 -->
@@ -1423,6 +1441,7 @@
       showToast(timelineIsVisible ? '已显示疗程时间轴' : '已隐藏疗程时间轴');
     }
 
+    const TARGET_WEIGHT = 148.0;
     const WORKER_API_BASE = 'https://tirz-tracker.walkingscr.workers.dev';
     const API_BASE = (window.location.protocol === 'file:' || window.location.hostname.endsWith('.github.io'))
       ? WORKER_API_BASE
@@ -2205,7 +2224,11 @@
       if (!root || !progress || !setupButton) return;
       root.replaceChildren();
       const configured = getHealthPlanReady();
-      setupButton.classList.toggle('hidden', configured);
+      setupButton.classList.remove('hidden');
+      setupButton.textContent = configured ? '调整用药计划' : '设置现有用药时间';
+      setupButton.className = configured
+        ? 'w-full min-h-11 rounded-xl border border-cyberNeon/40 text-cyberNeon font-mono font-bold text-sm'
+        : 'w-full min-h-12 rounded-xl bg-cyberNeon text-[#06111F] font-mono font-bold text-sm';
       if (!configured) {
         progress.textContent = '提醒时间尚未设置';
         const note = document.createElement('div');
@@ -3112,27 +3135,36 @@
     // =========================================================================
     // 渲染层 1：计算并刷新核心指标 (三列共享容器)
     // =========================================================================
+    function formatGoalGapSummary(weight, targetWeight) {
+      if (weight == null || !Number.isFinite(Number(weight)) || Number(weight) <= 0) return '暂无最新体重';
+      const gap = Math.round((Number(weight) - targetWeight) * 10) / 10;
+      return gap > 0 ? `还差 ${gap.toFixed(1)} 斤` : gap < 0 ? `已低于目标 ${Math.abs(gap).toFixed(1)} 斤` : '已达到目标体重';
+    }
+
     function calculateStats() {
       const statTargetWeight = document.getElementById('statTargetWeight');
       const statCurrentWeight = document.getElementById('statCurrentWeight');
       const statTotalDrop = document.getElementById('statTotalDrop');
-      const TARGET_WEIGHT = 148.0;
+      const statGoalGap = document.getElementById('statGoalGap');
 
       if (statTargetWeight) statTargetWeight.textContent = TARGET_WEIGHT;
 
-      if (weightRecords.length === 0) {
+      const validRecords = weightRecords.filter(record => Number.isFinite(Number(record?.weight)) && Number(record?.weight) > 0);
+      if (validRecords.length === 0) {
         if (statCurrentWeight) statCurrentWeight.textContent = '--';
         if (statTotalDrop) statTotalDrop.textContent = '--';
+        if (statGoalGap) statGoalGap.textContent = formatGoalGapSummary(null, TARGET_WEIGHT);
         return;
       }
 
-      const sortedAsc = [...weightRecords].sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
-      const baseline = sortedAsc[0].weight;
+      const sortedAsc = [...validRecords].sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+      const baseline = Number(sortedAsc[0].weight);
       const latestRec = sortedAsc[sortedAsc.length - 1];
-      const latest = latestRec.weight;
+      const latest = Number(latestRec.weight);
       const diff = (latest - baseline).toFixed(1);
 
       if (statCurrentWeight) statCurrentWeight.textContent = latest.toFixed(1);
+      if (statGoalGap) statGoalGap.textContent = formatGoalGapSummary(latest, TARGET_WEIGHT);
       if (statTotalDrop) {
         statTotalDrop.textContent = diff <= 0 ? `${diff}` : `+${diff}`;
       }
@@ -3183,14 +3215,13 @@
       gradient.addColorStop(0, 'rgba(39, 242, 195, 0.35)');
       gradient.addColorStop(1, 'rgba(39, 242, 195, 0.0)');
 
-      const targetWeight = 148;
+      const targetWeight = TARGET_WEIGHT;
 
       // Detailed values live in the readout; only collision-free key labels stay on the plot.
       let selectedTrendIndex = filtered.length - 1;
       function updateTrendReadout() {
         const record = filtered[selectedTrendIndex];
         const dateEl = document.getElementById('trendSelectedDate');
-        const goalGapEl = document.getElementById('trendGoalGap');
         const goalGap = record ? Math.round((Number(record.weight) - targetWeight) * 10) / 10 : null;
         const goalGapText = goalGap === null ? '距目标 -- 斤' : goalGap > 0 ? `距目标还差 ${goalGap.toFixed(1)} 斤`
           : goalGap < 0 ? `低于目标 ${Math.abs(goalGap).toFixed(1)} 斤` : '已达到目标';
@@ -3199,7 +3230,6 @@
           ? `${dateLabel ? dateLabel[0] + '月' + dateLabel[1] + '日' : '当前记录'}${selectedTrendIndex === filtered.length - 1 ? ' · 最新' : ''}`
           : '暂无记录';
         if (dateEl) dateEl.textContent = text;
-        if (goalGapEl) goalGapEl.textContent = goalGapText;
         canvas.setAttribute('aria-valuemax', String(Math.max(0, filtered.length - 1)));
         canvas.setAttribute('aria-valuenow', String(Math.max(0, selectedTrendIndex)));
         canvas.setAttribute('aria-valuetext', record ? `${text}，${Number(record.weight).toFixed(1)}斤，${goalGapText}` : '暂无记录');
@@ -4222,11 +4252,13 @@
       const timeoutErr = document.getElementById('confirmTimeoutError');
       const unsuppErr = document.getElementById('confirmUnsupportedError');
       const uploadErr = document.getElementById('confirmUploadError');
+      const recognitionErr = document.getElementById('confirmRecognitionError');
 
       if (scanState) scanState.classList.add('hidden');
       if (timeoutErr) timeoutErr.classList.add('hidden');
       if (unsuppErr) unsuppErr.classList.add('hidden');
       if (uploadErr) uploadErr.classList.add('hidden');
+      if (recognitionErr) recognitionErr.classList.add('hidden');
     }
 
     function updateConditionTagUI(activeTag) {
@@ -4369,6 +4401,7 @@
             imageBase64: base64Image,
             requestId: scanContext.requestId,
             clientPrepareMs: scanContext.prepareMs,
+            clientRemainingMs: Math.max(0, Math.floor(scanContext.deadlineAt - performance.now())),
             clientInputBytes: scanContext.inputBytes,
             clientImageBytes: imageBytes,
             clientMimeType: scanContext.inputMimeType
@@ -4392,7 +4425,8 @@
             showTimeoutErrorState();
             return;
           }
-          throw new Error(data.message || '识别失败');
+          showRecognitionErrorState(data.message || '识别服务暂不可用，请稍后重试或手动输入。');
+          return;
         }
 
         const weight = Number(data.weight);
@@ -4402,7 +4436,7 @@
           hideConfirmInModalErrors();
           showToast('秤面重量自动识别成功！');
         } else {
-          showTimeoutErrorState();
+          showRecognitionErrorState('未能从照片中读到体重数字，请重试或手动输入。');
         }
       } catch (err) {
         if (scanContext.cancelled) return;
@@ -4411,12 +4445,23 @@
           error: err?.name === 'AbortError' ? (scanContext.expired ? 'deadline_exceeded' : 'aborted') : 'request_failed',
           apiRoundTripMs: Math.round(performance.now() - requestStartedAt)
         }));
-        showTimeoutErrorState();
+        if (scanContext.expired || performance.now() >= scanContext.deadlineAt) showTimeoutErrorState();
+        else showRecognitionErrorState('无法连接识别服务，请检查网络后重试，或手动输入。');
       } finally {
         if (saveBtn) saveBtn.disabled = false;
         if (ocrAbortController === controller) ocrAbortController = null;
         clearScaleScanTimers(scanContext);
       }
+    }
+
+    function showRecognitionErrorState(message) {
+      hideConfirmInModalErrors();
+      const errorPanel = document.getElementById('confirmRecognitionError');
+      const errorMessage = document.getElementById('recognitionErrorMessage');
+      const requestLabel = document.getElementById('recognitionRequestId');
+      if (errorMessage) errorMessage.textContent = message;
+      if (requestLabel) requestLabel.textContent = activeScaleScanContext?.requestId ? '诊断编号：' + activeScaleScanContext.requestId : '';
+      if (errorPanel) errorPanel.classList.remove('hidden');
     }
 
     function showTimeoutErrorState() {
@@ -4489,6 +4534,19 @@
 
     const btnCancelUploadError = document.getElementById('btnCancelUploadError');
     if (btnCancelUploadError) btnCancelUploadError.onclick = hideConfirmInModalErrors;
+
+    const btnRetryRecognitionError = document.getElementById('btnRetryRecognitionError');
+    const btnManualRecognitionError = document.getElementById('btnManualRecognitionError');
+    const btnCancelRecognitionError = document.getElementById('btnCancelRecognitionError');
+    if (btnRetryRecognitionError) btnRetryRecognitionError.onclick = () => {
+      if (currentParsedImageBase64) startScanRecognition(currentParsedImageBase64);
+      else openPhotoSourceSheet();
+    };
+    if (btnManualRecognitionError) btnManualRecognitionError.onclick = () => {
+      hideConfirmInModalErrors();
+      document.getElementById('confirmWeightInput')?.focus();
+    };
+    if (btnCancelRecognitionError) btnCancelRecognitionError.onclick = hideConfirmInModalErrors;
 
     // 重试上传
     const btnRetryUploadOnError = document.getElementById('btnRetryUploadOnError');
@@ -5610,12 +5668,12 @@
       if ('caches' in window) {
         caches.keys().then(names => {
           for (let name of names) {
-            if (name !== 'tirz-tracker-v6.2') caches.delete(name);
+            if (name !== 'tirz-tracker-v6.3') caches.delete(name);
           }
         });
       }
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/sw.js?v=6.2', { updateViaCache: 'none' })
+        navigator.serviceWorker.register('/sw.js?v=6.3', { updateViaCache: 'none' })
           .then(reg => {
             reg.update();
             reg.onupdatefound = () => {

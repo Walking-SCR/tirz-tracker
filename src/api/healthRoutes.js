@@ -67,16 +67,35 @@ async function saveHealth(env, document, sha, expectedRevision, message) {
   }
 }
 
-function plansAreConfigured(plans) {
-  if (!plans || typeof plans !== 'object') return false;
+function normalizeMedicationPlans(input) {
+  if (!input || typeof input !== 'object') return null;
+  let plans = input;
+  if (Array.isArray(input)) {
+    if (input.length !== 3 || new Set(input.map(plan => plan?.id)).size !== 3) return null;
+    plans = Object.fromEntries(input.map(plan => [plan?.id, plan]));
+  }
   const oral = plans.oral;
   const topical = plans.topical;
   const lacquer = plans['nail-lacquer'];
-  return Array.isArray(oral?.times) && oral.times.length === 3 && oral.times.every(validateHealthTime)
+  const valid = Array.isArray(oral?.times) && oral.times.length === 3 && oral.times.every(validateHealthTime)
     && new Set(oral.times).size === 3 && validateHealthDate(oral.startDate)
     && Array.isArray(topical?.times) && topical.times.length === 1
     && validateHealthTime(topical.times[0]) && validateHealthDate(topical.startDate)
     && lacquer?.intervalDays === 3 && validateHealthTime(lacquer.time) && validateHealthDate(lacquer.startDate);
+  if (!valid) return null;
+  return createEmptyHealthDocument().medicationPlans.map(base => {
+    const plan = plans[base.id];
+    return {
+      ...base,
+      ...(base.id === 'nail-lacquer' ? { time: plan.time } : { times: [...plan.times] }),
+      startDate: plan.startDate,
+      active: plan.active !== false
+    };
+  });
+}
+
+function plansAreConfigured(plans) {
+  return normalizeMedicationPlans(plans) !== null;
 }
 
 function validateRange(range) {
@@ -249,8 +268,9 @@ export async function handleHealthRoutes(request, env, url, session) {
     const body = await parseBody(request);
     if (body.error) return jsonResponse({ error: body.error }, 400);
     if (body.action === 'save-plans') {
-      if (!plansAreConfigured(body.medicationPlans)) return jsonResponse({ error: 'INVALID_MEDICATION_PLAN', message: '请为三类计划填写有效时间和开始日期' }, 400);
-      health.medicationPlans = ['oral', 'topical', 'nail-lacquer'].map(id => ({ ...body.medicationPlans[id], id, active: body.medicationPlans[id].active !== false }));
+      const normalizedPlans = normalizeMedicationPlans(body.medicationPlans);
+      if (!normalizedPlans) return jsonResponse({ error: 'INVALID_MEDICATION_PLAN', message: '请为三类计划填写有效时间和开始日期' }, 400);
+      health.medicationPlans = normalizedPlans;
     } else if (body.action === 'confirm-calendar') {
       health.calendar.userConfirmedAt = new Date().toISOString();
     } else if (body.action === 'stop-calendar') {

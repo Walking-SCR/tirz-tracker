@@ -4,9 +4,10 @@
 // 浏览器端永不携带 API Key：密钥仅保存在 Worker Secrets 中。
 
 const MAX_IMAGE_BASE64_LENGTH = 4_000_000;
-const UPSTREAM_TIMEOUT_MS = 5_000;
-// 上游最多一个主通道和两个同模型 Gemini 端点，限制串行回退的总等待时间。
-const TOTAL_UPSTREAM_BUDGET_MS = 10_000;
+const UPSTREAM_TIMEOUT_MS = 12_000;
+// 浏览器总时限为20秒；服务端最多17秒，并扣除客户端已用时间、预留1.5秒回传。
+const TOTAL_UPSTREAM_BUDGET_MS = 17_000;
+const RESPONSE_RESERVE_MS = 1_500;
 // MiniMax 国内平台（OpenAI 兼容的 Chat Completions 接口）
 const MINIMAX_API_URL = 'https://api.minimaxi.com/v1/chat/completions';
 const MINIMAX_MODEL = 'MiniMax-M3';
@@ -62,8 +63,8 @@ function readUpstreamReason(upstreamText) {
   return reason;
 }
 
-function getRemainingUpstreamBudgetMs(startedAt) {
-  return Math.max(0, TOTAL_UPSTREAM_BUDGET_MS - (Date.now() - startedAt));
+function getRemainingUpstreamBudgetMs(startedAt, budgetMs) {
+  return Math.max(0, budgetMs - (Date.now() - startedAt));
 }
 
 function boundedClientMetric(value, max) {
@@ -97,6 +98,11 @@ export async function handleAIRoutes(request, env, url, session) {
   if (!isRequestId(headerRequestId) && isRequestId(body?.requestId)) requestId = body.requestId;
   const requestParsedAt = Date.now();
   const clientPrepareMs = boundedClientMetric(body?.clientPrepareMs, 120_000);
+  const clientRemainingMs = boundedClientMetric(body?.clientRemainingMs, 20_000);
+  const upstreamBudgetMs = Math.max(0, Math.min(
+    TOTAL_UPSTREAM_BUDGET_MS,
+    (clientRemainingMs ?? Math.max(0, 20_000 - (clientPrepareMs || 0))) - RESPONSE_RESERVE_MS
+  ));
   const clientInputBytes = boundedClientMetric(body?.clientInputBytes, 100_000_000);
   const clientImageBytes = boundedClientMetric(body?.clientImageBytes, 10_000_000);
   const clientMimeType = typeof body?.clientMimeType === 'string' && /^image\/[a-z0-9.+-]{1,32}$/i.test(body.clientMimeType)
@@ -136,7 +142,7 @@ export async function handleAIRoutes(request, env, url, session) {
   logEvent('info', 'ai_request_started', {
     requestId, mimeType, imageBase64Length: pureBase64.length,
     clientImageBytes, clientInputBytes,
-    clientMimeType, clientPrepareMs, requestParseMs: requestParsedAt - startedAt,
+    clientMimeType, clientPrepareMs, clientRemainingMs, upstreamBudgetMs, requestParseMs: requestParsedAt - startedAt,
     primary: minimaxKey ? 'minimax' : 'gemini'
   });
   const prompt = `Extract the weight number from this digital bathroom scale photo (white/colored LED digits under glass or LCD 7-segment display). Return ONLY valid JSON: {"weight": number, "unit": "斤"}. Example: {"weight": 168.5, "unit": "斤"}`;
@@ -151,11 +157,11 @@ export async function handleAIRoutes(request, env, url, session) {
 
   // --- 主通道：MiniMax-M3（HEIC/HEIF 无法解码，直接跳过）---
   if (minimaxKey && MINIMAX_SUPPORTED_MIME.test(mimeType)) {
-    const remainingBudgetMs = getRemainingUpstreamBudgetMs(startedAt);
+    const remainingBudgetMs = getRemainingUpstreamBudgetMs(startedAt, upstreamBudgetMs);
     if (remainingBudgetMs > 0) {
       attemptCount += 1;
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), Math.min(UPSTREAM_TIMEOUT_MS, remainingBudgetMs));
+      const timeoutId = setTimeout(() => controller.abort(), Math.min(geminiKey ? UPSTREAM_TIMEOUT_MS : upstreamBudgetMs, remainingBudgetMs));
       const attemptStartedAt = Date.now();
       try {
         const res = await fetch(MINIMAX_API_URL, {
@@ -220,7 +226,7 @@ export async function handleAIRoutes(request, env, url, session) {
   if (useGeminiFallback) for (const endpoint of GEMINI_ENDPOINTS) {
     for (const model of modelsToTry) {
       if (!geminiKey) break attemptLoop;
-      const remainingBudgetMs = getRemainingUpstreamBudgetMs(startedAt);
+      const remainingBudgetMs = getRemainingUpstreamBudgetMs(startedAt, upstreamBudgetMs);
       if (remainingBudgetMs <= 0) break attemptLoop;
       attemptCount += 1;
       const controller = new AbortController();
@@ -286,7 +292,7 @@ export async function handleAIRoutes(request, env, url, session) {
 
   // Enforce the absolute chain deadline even when a previous fallback returned a
   // fast HTTP error and the final attempt consumed the remaining budget.
-  const timedOut = getRemainingUpstreamBudgetMs(startedAt) === 0
+  const timedOut = getRemainingUpstreamBudgetMs(startedAt, upstreamBudgetMs) === 0
     || (attemptCount > 0 && timeoutCount === attemptCount);
   // "User location is not supported for the API use." —— 上游拒绝的是 Worker 的出口
   // 所在区域，而非图片本身。此处如实上报，不再误判为图片格式问题。
