@@ -121,6 +121,8 @@
     .trend-readout-date { color: #93A4B8; font-size: 11px; }
     .trend-readout-target { display: flex; flex-direction: column; align-items: flex-end; gap: 5px; flex-shrink: 0; }
     #metricsSummary { padding-bottom: 0; }
+    .metric-value { display: flex; align-items: baseline; justify-content: center; gap: 2px; white-space: nowrap; }
+    .metric-value > span:last-child { margin-left: 0; }
     .goal-gap-summary { display: flex; justify-content: center; align-items: center; gap: 10px; margin-top: 8px; padding: 9px 0; min-height: 36px; border-top: 1px solid rgba(145,166,190,.16); font-variant-numeric: tabular-nums; }
     .goal-gap-summary__label { color: #93A4B8; font-size: 12px; line-height: 1; }
     .goal-gap-summary__value { color: #27F2C3; font-size: 18px; font-weight: 700; line-height: 1; }
@@ -161,6 +163,7 @@
       #weightMain { display: flex; flex-direction: column; gap: 12px; }
       #weightMain > section { margin-top: 0 !important; flex-shrink: 0; }
       #metricsSummary { padding-top: 12px; }
+      #metricsSummary .metric-value { font-size: clamp(24px, 6.8vw, 30px); }
       #trendSection > .trend-chart-wrap { margin-top: 6px; height: var(--weight-trend-height, clamp(192px, 28svh, 252px)); }
       #trendSection .trend-readout { min-height: 28px; padding-bottom: 6px; }
       #treatmentTimeline { display: flex; flex-direction: column; gap: 10px; padding-top: 12px; padding-bottom: 12px; }
@@ -421,19 +424,19 @@
       <div class="grid grid-cols-3 divide-x divide-[rgba(145,166,190,0.18)]">
       <div class="px-1">
         <div class="text-sm font-mono text-cyberTextDim">目标体重</div>
-        <div class="text-3xl font-mono font-black text-white mt-1 leading-none">
+        <div class="metric-value text-3xl font-mono font-black text-white mt-1 leading-none">
           <span id="statTargetWeight">148</span><span class="text-xs font-normal text-cyberTextDim ml-0.5">斤</span>
         </div>
       </div>
       <div class="px-1">
         <div class="text-sm font-mono text-cyberTextDim">当前体重</div>
-        <div class="text-3xl font-mono font-black text-cyberNeon mt-1 leading-none">
+        <div class="metric-value text-3xl font-mono font-black text-cyberNeon mt-1 leading-none">
           <span id="statCurrentWeight">--</span><span class="text-xs font-normal text-cyberTextDim ml-0.5">斤</span>
         </div>
       </div>
       <div class="px-1">
         <div class="text-sm font-mono text-cyberTextDim">累计净减</div>
-        <div class="text-3xl font-mono font-black text-cyberPurple mt-1 leading-none">
+        <div class="metric-value text-3xl font-mono font-black text-cyberPurple mt-1 leading-none">
           <span id="statTotalDrop">--</span><span class="text-xs font-normal text-cyberTextDim ml-0.5">斤</span>
         </div>
       </div>
@@ -5734,12 +5737,12 @@
       if ('caches' in window) {
         caches.keys().then(names => {
           for (let name of names) {
-            if (name !== 'tirz-tracker-v6.4') caches.delete(name);
+            if (name !== 'tirz-tracker-v6.5') caches.delete(name);
           }
         });
       }
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/sw.js?v=6.4', { updateViaCache: 'none' })
+        navigator.serviceWorker.register('/sw.js?v=6.5', { updateViaCache: 'none' })
           .then(reg => {
             reg.update();
             reg.onupdatefound = () => {

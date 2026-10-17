@@ -404,6 +404,8 @@ test('mobile goal strip is centered with symmetric spacing and keeps timeline ta
   const html = fs.readFileSync('index.html', 'utf8');
   assert.match(html, /\.goal-gap-summary\s*\{[^}]*justify-content: center;[^}]*align-items: center;[^}]*padding: 9px 0;/);
   assert.match(html, /#metricsSummary\s*\{ padding-bottom: 0; \}/);
+  assert.match(html, /\.metric-value\s*\{[^}]*white-space: nowrap;/, 'Metric values must keep the jin unit on the same line');
+  assert.match(html, /font-size: clamp\(24px, 6\.8vw, 30px\)/);
   assert.match(html, /#timelineViewport\s*\{ min-height: 106px;/);
   assert.match(html, /class="w-10 h-10 rounded-full/);
   assert.match(html, /visualViewport\?\.addEventListener\('resize', scheduleWeightFirstScreenFit\)/);
@@ -446,9 +448,9 @@ test('mobile first-screen fitting reserves navigation space without shrinking th
   }
 });
 
-test('Service Worker cache version is v6.4 in sw.js and public/sw.js', () => {
+test('Service Worker cache version is v6.5 in sw.js and public/sw.js', () => {
   const rootSw = fs.readFileSync('sw.js', 'utf-8');
   const publicSw = fs.readFileSync('public/sw.js', 'utf-8');
-  assert.ok(rootSw.includes('tirz-tracker-v6.4'), 'sw.js must contain cache v6.4');
-  assert.ok(publicSw.includes('tirz-tracker-v6.4'), 'public/sw.js must contain cache v6.4');
+  assert.ok(rootSw.includes('tirz-tracker-v6.5'), 'sw.js must contain cache v6.5');
+  assert.ok(publicSw.includes('tirz-tracker-v6.5'), 'public/sw.js must contain cache v6.5');
 });
