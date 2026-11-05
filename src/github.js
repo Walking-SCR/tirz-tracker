@@ -134,33 +134,42 @@ export async function deleteFile(env, filePath, sha, commitMessage = 'Delete fil
 // 读取体重记录数组
 export async function getRecords(env) {
   const file = await getFile(env, 'data/records.json');
-  if (!file || !file.content) return { records: [], sha: null };
+  if (!file || !file.content) return { records: [], sha: null, rawParsed: null };
 
   try {
     const jsonStr = base64ToUtf8(file.content);
     const parsed = JSON.parse(jsonStr);
     const records = Array.isArray(parsed) ? parsed : (parsed.weights || []);
-    return { records, sha: file.sha };
+    return { records, sha: file.sha, rawParsed: parsed };
   } catch (err) {
     console.error('Failed to parse records.json', err);
-    return { records: [], sha: file.sha };
+    return { records: [], sha: file.sha, rawParsed: null };
   }
 }
 
 // 保存体重记录数组
-export async function saveRecords(env, records, message = 'Update biometric records') {
-  const existing = await getFile(env, 'data/records.json');
-  const sha = existing ? existing.sha : null;
+export async function saveRecords(env, records, message = 'Update biometric records', knownSha = null, rawParsed = null) {
+  let sha = knownSha;
   let dataToSave;
-  if (existing && existing.content) {
-    try {
-      const parsed = JSON.parse(base64ToUtf8(existing.content));
-      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-        parsed.weights = records;
-        parsed.lastUpdated = new Date().toISOString();
-        dataToSave = parsed;
-      }
-    } catch (e) {}
+  if (rawParsed && typeof rawParsed === 'object' && !Array.isArray(rawParsed)) {
+    dataToSave = {
+      ...rawParsed,
+      weights: records,
+      lastUpdated: new Date().toISOString()
+    };
+  } else {
+    const existing = knownSha ? null : await getFile(env, 'data/records.json');
+    if (existing) sha = existing.sha;
+    if (existing && existing.content) {
+      try {
+        const parsed = JSON.parse(base64ToUtf8(existing.content));
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          parsed.weights = records;
+          parsed.lastUpdated = new Date().toISOString();
+          dataToSave = parsed;
+        }
+      } catch (e) {}
+    }
   }
   if (!dataToSave) {
     dataToSave = {
@@ -181,8 +190,7 @@ export async function getDoses(env) {
     try {
       const jsonStr = base64ToUtf8(file.content);
       const parsed = JSON.parse(jsonStr);
-      // 空数组也是有效的云端状态。不能把“已全部删除”的 doses.json
-      // 当成不存在，否则读取时会回退到 records.json，把已删除的针剂复活。
+      // 空数组也是有效的云端状态。
       const doses = Array.isArray(parsed)
         ? parsed
         : (parsed && Array.isArray(parsed.doses) ? parsed.doses : null);
@@ -194,27 +202,12 @@ export async function getDoses(env) {
     }
   }
 
-  // 回退：从 records.json 中读取用药数据
-  try {
-    const recFile = await getFile(env, 'data/records.json');
-    if (recFile && recFile.content) {
-      const jsonStr = base64ToUtf8(recFile.content);
-      const parsed = JSON.parse(jsonStr);
-      if (parsed && Array.isArray(parsed.doses) && parsed.doses.length > 0) {
-        return { doses: parsed.doses, sha: recFile.sha };
-      }
-    }
-  } catch (err) {
-    console.error('Failed to parse fallback doses from records.json', err);
-  }
-
   return { doses: [], sha: file ? file.sha : null };
 }
 
-// 保存用药记录数组
-export async function saveDoses(env, doses, message = 'Update GLP-1 doses') {
-  const existing = await getFile(env, 'data/doses.json');
-  const sha = existing ? existing.sha : null;
+// 保存用药记录数组，支持复用已知 SHA 消除冗余网络往返
+export async function saveDoses(env, doses, message = 'Update GLP-1 doses', knownSha = null) {
+  const sha = knownSha !== null ? knownSha : (await getFile(env, 'data/doses.json'))?.sha ?? null;
   const jsonStr = JSON.stringify(doses, null, 2);
   const b64 = utf8ToBase64(jsonStr);
   return await putFile(env, 'data/doses.json', b64, message, sha);

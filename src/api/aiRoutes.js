@@ -36,14 +36,57 @@ function extractJson(text) {
     try { return JSON.parse(jsonStr); } catch { }
     try { return JSON.parse(normalize(jsonStr)); } catch { }
   }
-  const numMatch = text.match(/"weight"\s*:\s*"?(\d{2,3}(?:\.\d{1,2})?)"?/) || text.match(/(\d{2,3}(?:\.\d{1,2})?)/);
-  return numMatch ? { weight: parseFloat(numMatch[1]), unit: '斤' } : null;
+  const numMatch = text.match(/"(?:raw_value|rawValue|weight)"\s*:\s*"?(\d{2,3}(?:\.\d{1,2})?)"?/) || text.match(/(\d{2,3}(?:\.\d{1,2})?)/);
+  return numMatch ? { raw_value: parseFloat(numMatch[1]), raw_unit: 'none', weight: parseFloat(numMatch[1]), unit: '斤' } : null;
 }
 
 function parseWeight(parsed) {
-  let weight = parsed?.weight;
-  weight = typeof weight === 'string' ? parseFloat(weight.replace(/[^0-9.]/g, '')) : Number(weight);
-  return Number.isFinite(weight) && weight > 0 ? weight : null;
+  if (!parsed || typeof parsed !== 'object') return null;
+
+  // 1. 优先提取 raw_value 结合 raw_unit 进行确定性代码数学换算
+  let rawVal = parsed.raw_value ?? parsed.rawValue ?? parsed['raw values'] ?? parsed.rawValues;
+  if (typeof rawVal === 'string') {
+    const numMatch = rawVal.match(/(\d{2,3}(?:\.\d{1,2})?)/);
+    rawVal = numMatch ? parseFloat(numMatch[1]) : null;
+  } else if (typeof rawVal === 'number' && Number.isFinite(rawVal)) {
+    // 合法数值
+  } else {
+    rawVal = null;
+  }
+
+  const rawUnitStr = String(parsed.raw_unit ?? parsed.rawUnit ?? parsed.unit ?? '').toLowerCase().trim();
+  const hasKg = /kg|公斤|千克/i.test(rawUnitStr);
+  const hasLb = /lb|磅/i.test(rawUnitStr);
+
+  if (rawVal !== null && rawVal > 0) {
+    if (rawVal >= 110) return Math.round(rawVal * 10) / 10;
+    if (hasKg || (rawVal >= 50 && rawVal <= 105 && !rawUnitStr.includes('斤'))) {
+      return Math.round(rawVal * 2 * 10) / 10;
+    }
+    if (hasLb) return Math.round(rawVal * 0.907 * 10) / 10;
+    return Math.round(rawVal * 10) / 10;
+  }
+
+  // 2. 兼容直接输出 weight 字段（如 V2 提示词）
+  let weight = parsed.weight;
+  if (typeof weight === 'string') {
+    const numMatch = weight.match(/(\d{2,3}(?:\.\d{1,2})?)/);
+    weight = numMatch ? parseFloat(numMatch[1]) : null;
+  } else if (typeof weight === 'number' && Number.isFinite(weight)) {
+    // 合法数值
+  } else {
+    weight = null;
+  }
+
+  if (weight !== null && weight > 0) {
+    // 量程常识纠偏：若模型直接输出 weight 在 55~105 之间，成人体重不可能仅几十斤（系 kg 遗漏换算为斤），自动纠偏为市斤
+    if (weight >= 55 && weight <= 105) {
+      return Math.round(weight * 2 * 10) / 10;
+    }
+    return Math.round(weight * 10) / 10;
+  }
+
+  return null;
 }
 
 function jsonResponse(payload, status, requestId) {
@@ -226,7 +269,7 @@ export async function handleAIRoutes(request, env, url, session) {
         } else {
           const data = await res.json();
           const parsed = extractJson(data.choices?.[0]?.message?.content);
-          if (parsed && typeof parsed === 'object' && parsed.weight === null) {
+          if (parsed && typeof parsed === 'object' && (parsed.weight === null || parsed.raw_value === null)) {
             explicitNullWeightModel = MINIMAX_MODEL;
           }
           const weight = parseWeight(parsed);
@@ -301,7 +344,7 @@ export async function handleAIRoutes(request, env, url, session) {
         }
         const data = await res.json();
         const parsed = extractJson(data.candidates?.[0]?.content?.parts?.[0]?.text);
-        if (parsed && typeof parsed === 'object' && parsed.weight === null) {
+        if (parsed && typeof parsed === 'object' && (parsed.weight === null || parsed.raw_value === null)) {
           explicitNullWeightModel = model;
         }
         const weight = parseWeight(parsed);

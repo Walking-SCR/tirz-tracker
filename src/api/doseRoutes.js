@@ -67,9 +67,9 @@ export async function handleDoseRoutes(request, env, url, session) {
       createdAt: new Date().toISOString()
     };
 
-   const { doses } = await getDoses(env);
+   const { doses, sha: currentSha } = await getDoses(env);
    doses.push(newDose);
-   await saveDoses(env, doses, `Add dose record ${seq} (${amount})`);
+   await saveDoses(env, doses, `Add dose record ${seq} (${amount})`, currentSha);
 
    return new Response(JSON.stringify({ success: true, dose: newDose }), {
      headers: { 'Content-Type': 'application/json' }
@@ -94,7 +94,7 @@ export async function handleDoseRoutes(request, env, url, session) {
       return new Response(JSON.stringify({ error: 'INVALID_JSON' }), { status: 400 });
     }
 
-    const { doses } = await getDoses(env);
+    const { doses, sha: currentSha } = await getDoses(env);
     const index = doses.findIndex(d => d.id === patchTargetId);
     if (index === -1) {
       return new Response(JSON.stringify({ error: 'NOT_FOUND', message: '未找到指定给药记录' }), { status: 404 });
@@ -119,7 +119,7 @@ export async function handleDoseRoutes(request, env, url, session) {
     current.updatedAt = new Date().toISOString();
 
     doses[index] = current;
-    await saveDoses(env, doses, `Update dose record ${patchTargetId}`);
+    await saveDoses(env, doses, `Update dose record ${patchTargetId}`, currentSha);
 
     return new Response(JSON.stringify({ success: true, dose: current }), {
       headers: { 'Content-Type': 'application/json' }
@@ -139,13 +139,13 @@ export async function handleDoseRoutes(request, env, url, session) {
 
     const targetId = delTargetId;
     try {
-      const { doses } = await getDoses(env);
+      const { doses, sha: currentSha } = await getDoses(env);
       const updated = doses.filter(d => d.id !== targetId);
 
       // 删除请求必须落到 data/doses.json；目标已不存在时保持幂等，
       // 这样客户端重试不会因为 404 把待同步队列卡住。
       if (updated.length !== doses.length) {
-        await saveDoses(env, updated, `Delete dose ${targetId}`);
+        await saveDoses(env, updated, `Delete dose ${targetId}`, currentSha);
       }
 
       return new Response(JSON.stringify({

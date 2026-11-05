@@ -60,7 +60,8 @@ export async function handleAuthRoutes(request, env, url) {
         (env.TOKEN && env.TOKEN.trim()) ||
         (env.GITHUB_DATA_TOKEN && env.GITHUB_DATA_TOKEN.trim())
       ),
-      hasGeminiKey: !!(env.GEMINI_API_KEY && env.GEMINI_API_KEY.trim())
+      hasGeminiKey: !!(env.GEMINI_API_KEY && env.GEMINI_API_KEY.trim()),
+      hasMinimaxKey: !!(env.MINIMAX_API_KEY && env.MINIMAX_API_KEY.trim())
     }), { headers });
   }
 

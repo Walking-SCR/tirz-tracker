@@ -247,7 +247,7 @@ async function calendarFeed(request, env, url) {
   if (!health.calendar?.active || health.calendar.version !== version) {
     return new Response('Subscription revoked', { status: 410, headers: { 'Cache-Control': 'no-store' } });
   }
-  return new Response(buildHealthCalendar(health), {
+  return new Response(buildHealthCalendar(health, url.origin), {
     headers: {
       'Content-Type': 'text/calendar; charset=utf-8',
       'Content-Disposition': 'inline; filename="health.ics"',

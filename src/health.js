@@ -76,7 +76,7 @@ export function foldIcsLine(line, maxOctets = 75) {
   return parts.join('\r\n');
 }
 
-function eventLines({ uid, date, time, rule, completedDates }) {
+function eventLines({ uid, date, time, rule, completedDates, origin }) {
   const lines = [
     'BEGIN:VEVENT',
     'UID:' + uid + '@tirz-tracker',
@@ -87,6 +87,9 @@ function eventLines({ uid, date, time, rule, completedDates }) {
     'DESCRIPTION:请打开健康管理查看计划并记录。',
     'STATUS:CONFIRMED'
   ];
+  if (origin && /^https?:\/\//i.test(origin)) {
+    lines.push('URL:' + origin.replace(/\/+$/, '') + '/#health');
+  }
   if (rule) lines.push('RRULE:' + rule);
   const exclusions = [...new Set(completedDates || [])]
     .filter(validateHealthDate)
@@ -103,7 +106,7 @@ function eventLines({ uid, date, time, rule, completedDates }) {
   return lines;
 }
 
-export function buildHealthCalendar(health) {
+export function buildHealthCalendar(health, origin = '') {
   const lines = [
     'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Walking-SCR//Tirz Tracker//ZH',
     'CALSCALE:GREGORIAN', 'METHOD:PUBLISH', 'X-WR-CALNAME:健康用药', 'X-WR-TIMEZONE:Asia/Shanghai'
@@ -119,12 +122,12 @@ export function buildHealthCalendar(health) {
     if (plan.cadence === 'daily-slots' && Array.isArray(plan.times) && plan.times.length === 3 && plan.times.every(validateHealthTime)) {
       plan.times.forEach((time, index) => lines.push(...eventLines({
         uid: plan.id + '-' + (index + 1), date: plan.startDate, time, rule: 'FREQ=DAILY',
-        completedDates: doneDates(plan.id, time)
+        completedDates: doneDates(plan.id, time), origin
       })));
     } else if (plan.cadence === 'daily' && Array.isArray(plan.times) && plan.times.length === 1 && validateHealthTime(plan.times[0])) {
-      lines.push(...eventLines({ uid: plan.id, date: plan.startDate, time: plan.times[0], rule: 'FREQ=DAILY', completedDates: doneDates(plan.id, plan.times[0]) }));
+      lines.push(...eventLines({ uid: plan.id, date: plan.startDate, time: plan.times[0], rule: 'FREQ=DAILY', completedDates: doneDates(plan.id, plan.times[0]), origin }));
     } else if (plan.cadence === 'interval-days' && plan.intervalDays === 3 && validateHealthTime(plan.time)) {
-      lines.push(...eventLines({ uid: plan.id, date: plan.startDate, time: plan.time, rule: 'FREQ=DAILY;INTERVAL=3', completedDates: doneDates(plan.id, plan.time) }));
+      lines.push(...eventLines({ uid: plan.id, date: plan.startDate, time: plan.time, rule: 'FREQ=DAILY;INTERVAL=3', completedDates: doneDates(plan.id, plan.time), origin }));
     }
   }
 
@@ -138,7 +141,7 @@ export function buildHealthCalendar(health) {
     const values = Object.fromEntries(parts.map(part => [part.type, part.value]));
     const date = values.year + '-' + values.month + '-' + values.day;
     const time = values.hour + ':' + values.minute;
-    lines.push(...eventLines({ uid: 'snooze-' + row.id, date, time, rule: null, completedDates: [] }));
+    lines.push(...eventLines({ uid: 'snooze-' + row.id, date, time, rule: null, completedDates: [], origin }));
   });
 
   lines.push('END:VCALENDAR');
