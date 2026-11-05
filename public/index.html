@@ -837,9 +837,15 @@
               <span id="confirmPhotoStatusText" class="text-[10px] font-mono text-cyberTextDim mt-0.5 block">已载入凭证</span>
             </div>
           </div>
-          <button id="btnChangeImageInConfirm" aria-label="更换称重图片" type="button" class="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-mono text-neutral-300 active:scale-95 transition">
-            更换图片
-          </button>
+          <div class="flex items-center gap-2">
+            <button id="btnRotateImageInConfirm" aria-label="顺时针旋转90度" type="button" class="hidden px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-mono text-neutral-300 active:scale-95 transition flex items-center gap-1">
+              <i class="ph-bold ph-arrow-clockwise text-cyberNeon"></i>
+              <span>旋转</span>
+            </button>
+            <button id="btnChangeImageInConfirm" aria-label="更换称重图片" type="button" class="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-mono text-neutral-300 active:scale-95 transition">
+              更换图片
+            </button>
+          </div>
         </div>
 
         <!-- 04 识别中状态 (20 秒倒计时) -->
@@ -4514,6 +4520,37 @@
       return Math.max(0, Math.floor(encoded.length * 3 / 4) - (encoded.endsWith('==') ? 2 : encoded.endsWith('=') ? 1 : 0));
     }
 
+    function rotateBase64Image(base64Data, degrees = 90) {
+      return new Promise((resolve) => {
+        const img = new Image();
+        img.onload = () => {
+          try {
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            if (!ctx) return resolve(base64Data);
+
+            if (degrees === 90 || degrees === 270) {
+              canvas.width = img.height;
+              canvas.height = img.width;
+            } else {
+              canvas.width = img.width;
+              canvas.height = img.height;
+            }
+
+            ctx.translate(canvas.width / 2, canvas.height / 2);
+            ctx.rotate((degrees * Math.PI) / 180);
+            ctx.drawImage(img, -img.width / 2, -img.height / 2);
+
+            resolve(canvas.toDataURL('image/jpeg', 0.82));
+          } catch (e) {
+            resolve(base64Data);
+          }
+        };
+        img.onerror = () => resolve(base64Data);
+        img.src = base64Data;
+      });
+    }
+
     async function startScanRecognition(base64Image, context = null) {
       const scanContext = context || createScaleScanContext(null);
       currentParsedImageBase64 = base64Image;
@@ -4592,6 +4629,49 @@
 
         const weight = Number(data.weight);
         if (Number.isFinite(weight) && weight > 0) {
+          // 智能自适应突变复核：
+          // 若有上一条有效称重基准（例如 162 斤），而当前识别值发生突变异常（如 148.4 斤，偏差 > 8 斤），
+          // 且本次尚未尝试过 90° 旋转自适应，剩余时间充裕：
+          if (typeof rotateBase64Image === 'function' && !scanContext.rotatedAttempt && lastWeight && Math.abs(weight - lastWeight) > 8 && Math.floor(scanContext.deadlineAt - performance.now()) > 3500) {
+            console.info('OCR 识别数值与历史基准偏差过大 (' + weight + ' vs ' + lastWeight + ')，尝试顺时针 90° 旋转图像自适应找正...');
+            scanContext.rotatedAttempt = true;
+            try {
+              const rotatedBase64 = await rotateBase64Image(base64Image, 90);
+              const rotRes = await fetch(`${API_BASE}/api/ai/analyze-scale`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', ...CloudStorageAdapter.getCustomHeaders() },
+                credentials: 'include',
+                body: JSON.stringify({
+                  imageBase64: rotatedBase64,
+                  requestId: scanContext.requestId + '-rot',
+                  lastWeight: lastWeight,
+                  clientPrepareMs: scanContext.prepareMs,
+                  clientRemainingMs: Math.max(0, Math.floor(scanContext.deadlineAt - performance.now())),
+                  clientInputBytes: scanContext.inputBytes,
+                  clientImageBytes: estimateDataUrlBytes(rotatedBase64),
+                  clientMimeType: 'image/jpeg'
+                })
+              });
+              if (rotRes.ok) {
+                const rotData = await rotRes.json();
+                const rotWeight = Number(rotData.weight);
+                if (Number.isFinite(rotWeight) && rotWeight > 0 && Math.abs(rotWeight - lastWeight) < Math.abs(weight - lastWeight)) {
+                  currentParsedImageBase64 = rotatedBase64;
+                  const thumb = document.getElementById('confirmPhotoThumb');
+                  if (thumb) thumb.src = rotatedBase64;
+                  if (weightInput) weightInput.value = rotWeight;
+                  if (confidence) confidence.textContent = `AI 视觉置信度: 99% (${rotData.model || 'MiniMax-M3'} 角度自适应校正)`;
+                  hideConfirmInModalErrors();
+                  showToast('已自动校正秤面角度并完成识别！');
+                  return;
+                }
+              }
+            } catch (rotErr) {
+              console.warn('Auto rotation probe failed, falling back to initial result', rotErr);
+            }
+          }
+
+          currentParsedImageBase64 = base64Image;
           if (weightInput && !weightInput.value) weightInput.value = weight;
           if (confidence) confidence.textContent = `AI 视觉置信度: 99% (${data.model || 'MiniMax/Gemini'} 识别)`;
           hideConfirmInModalErrors();
@@ -4728,6 +4808,36 @@
       };
     }
 
+    // 确认弹层内部「顺时针旋转90度」按钮
+    const btnRotateImageInConfirm = document.getElementById('btnRotateImageInConfirm');
+    if (btnRotateImageInConfirm) {
+      btnRotateImageInConfirm.onclick = async () => {
+        if (!currentParsedImageBase64) return;
+        showToast('正在顺时针旋转 90 度并重新识别…', 'loading');
+        try {
+          const rotated = await rotateBase64Image(currentParsedImageBase64, 90);
+          currentParsedImageBase64 = rotated;
+          const thumb = document.getElementById('confirmPhotoThumb');
+          if (thumb) thumb.src = rotated;
+          const context = {
+            requestId: 'ui-rot-' + Date.now(),
+            deadlineAt: performance.now() + 20000,
+            prepareMs: 0,
+            inputBytes: estimateDataUrlBytes(rotated),
+            inputMimeType: 'image/jpeg',
+            cancelled: false,
+            expired: false,
+            rotatedAttempt: true
+          };
+          activeScaleScanContext = context;
+          startScanCountdown(context);
+          await startScanRecognition(rotated, context);
+        } catch (e) {
+          showToast('图片旋转失败', 'error');
+        }
+      };
+    }
+
     // =========================================================================
     // 图像上传、HEIC 转换与压缩处理
     // =========================================================================
@@ -4743,6 +4853,8 @@
       const beam = document.getElementById('confirmPhotoScanBeam');
 
       if (imageCard) imageCard.classList.remove('hidden');
+      const rotateBtn = document.getElementById('btnRotateImageInConfirm');
+      if (rotateBtn) rotateBtn.classList.remove('hidden');
       const objectUrl = URL.createObjectURL(file);
       if (thumb) {
         thumb.src = objectUrl;
