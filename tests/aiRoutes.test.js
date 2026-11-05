@@ -79,6 +79,25 @@ test('returns the normalized weight from the Gemini response', async () => {
   }
 });
 
+test('returns weight: null and friendly message when model cannot identify scale reading', async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => {
+    return new Response(JSON.stringify({
+      candidates: [{ content: { parts: [{ text: '{"weight":null,"unit":"斤"}' }] } }]
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  };
+
+  try {
+    const response = await handleAIRoutes(request({ imageBase64 }), { GEMINI_API_KEY: 'server-key' }, url);
+    const body = await json(response);
+    assert.equal(response.status, 200);
+    assert.equal(body.weight, null);
+    assert.equal(body.message, '暂无法识别数字，请更换图片');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test('caps each fallback timeout to the remaining total upstream budget', async () => {
   const originalFetch = globalThis.fetch;
   const originalDateNow = Date.now;

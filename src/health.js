@@ -1,8 +1,8 @@
 export const HEALTH_TIME_ZONE = 'Asia/Shanghai';
 
 export const HEALTH_METRICS = [
-  { id: 'alt', code: 'ALT', label: 'ALT · 谷丙转氨酶', aliases: ['ALT', 'GPT', '谷丙转氨酶', '丙氨酸氨基转移酶'] },
-  { id: 'ast', code: 'AST', label: 'AST · 谷草转氨酶', aliases: ['AST', 'GOT', '谷草转氨酶', '天门冬氨酸氨基转移酶'] }
+  { id: 'alt', code: 'ALT', label: 'ALT · 谷丙转氨酶', targetValue: 50, aliases: ['ALT', 'GPT', '谷丙转氨酶', '丙氨酸氨基转移酶'] },
+  { id: 'ast', code: 'AST', label: 'AST · 谷草转氨酶', targetValue: 50, aliases: ['AST', 'GOT', '谷草转氨酶', '天门冬氨酸氨基转移酶'] }
 ];
 
 export function createEmptyHealthDocument() {

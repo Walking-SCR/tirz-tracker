@@ -158,12 +158,38 @@ async function analyzeReport(request, env, session) {
   const timeoutId = setTimeout(() => controller.abort(), 12_000);
   try {
     const prompt = [
-      'Extract only dates and configured liver-enzyme measurements from this lab report image. Return JSON only.',
-      'Schema: {"dateCandidates":[{"value":"YYYY-MM-DD","type":"specimen|examination|report|unknown","rawLabel":"printed label"}],"observations":[{"metricCode":"ALT|AST","sourceLabel":"printed test name","value":number,"unit":"printed unit","referenceRange":{"lower":number,"upper":number},"printedFlag":"printed flag or empty"}]}.',
-      'ALT aliases: 谷丙转氨酶、丙氨酸氨基转移酶、GPT. AST aliases: 谷草转氨酶、天门冬氨酸氨基转移酶、GOT.',
-      'Keep specimen, examination, and report dates distinct. Do not infer a check date from the gallery, upload time, copyright year, or current date.',
-      'Pair each result with the reference range printed on the same report. Do not diagnose, explain cause, recommend medication, or invent unclear values. Omit unreadable rows.'
-    ].join(' ');
+      '你是一个专业的医疗检验报告单结构化数据提取引擎。请对上传的化验单/检验报告单图片进行高精度数字化识别，严格遵守 MECE 原则（相互独立、完全穷尽），按以下四个步骤执行，最终仅返回合法 JSON：',
+      '',
+      '【第一步：图像方向校正与区域锚定】',
+      '1. 360° 全向自适应校正：若图片旋转（90°/180°/270°）、俯拍倾斜或存在透视畸变，请先以单据顶部的医院抬头、检验科名称、横向分割线及表格表头（“项目名称/结果/参考范围/单位”）确定正向阅读基准。',
+      '2. 行对齐防串行：沿表格横向水平基准线阅读，锁定同一数据行。严禁将上下相邻行的数值或参考范围错位套用。若文字被红色公章、折痕压盖，请穿透底色识别打印字体；完全遮挡无法辨认的直接忽略。',
+      '',
+      '【第二步：日期实体提取与互斥分类（完全穷尽 4 种类型）】',
+      '从报告单的页眉、页脚及基本信息栏中提取所有相关日期，格式统一标准化为 "YYYY-MM-DD"（忽略具体时分秒），并严格按印制前缀进行语义分类：',
+      '- specimen（标本采样）：前缀包含“采样时间”、“采集日期”、“采血时间”、“抽血时间”等。',
+      '- examination（检验接收）：前缀包含“接收时间”、“送检日期”、“检验时间”、“测定时间”、“分析时间”等。',
+      '- report（报告发布）：前缀包含“报告时间”、“审核日期”、“核对时间”、“打印日期”等。',
+      '- unknown（未知类型）：单据上印有明确日期但前缀仅为“日期/时间”或无法明确对应上述三种流程。',
+      '【反例排除】：出生日期、就诊/挂号日期、病历建立日期、软件系统版权年份严禁作为化验日期提取。',
+      '',
+      '【第三步：目标肝酶指标提取与槽位清洗】',
+      '仅提取以下已配置的两种肝酶指标（其他无关指标忽略），严格提取 6 个结构化槽位：',
+      '1. metricCode（标准代码）：仅限 "ALT" 或 "AST"。',
+      '   - ALT 别名：ALT、谷丙转氨酶、丙氨酸氨基转移酶、GPT、ALAT。',
+      '   - AST 别名：AST、谷草转氨酶、天门冬氨酸氨基转移酶、GOT、ASAT。',
+      '   - 【互斥排除】：严禁提取“AST/ALT比值”、“谷草/谷丙比值”等复合比值！严禁提取 ALP（碱性磷酸酶）、GGT（谷氨酰转肽酶）等其他酶类。',
+      '2. sourceLabel：单据上打印的项目原始名称（如“丙氨酸氨基转移酶”）。',
+      '3. value：纯测定数值（浮点数或整数，如 86.5）。必须彻底剥离附带的箭头、正负号、星号、字母标记。',
+      '4. unit：单据打印的测定单位（如 "U/L"、"IU/L"）。',
+      '5. referenceRange：参考范围对象。若为双边区间（如 "9-50"、"9~50"），提取为 {"lower": 9, "upper": 50}；若仅有单边上限（如 "<50"、"<=50"），提取为 {"lower": 0, "upper": 50}；若无参考范围或缺失则填 null。',
+      '6. printedFlag：打印的高低/异常标记（如 "↑", "↓", "H", "L", "*", "+" 或文字“偏高”），无任何标记则输出空字符串 ""。',
+      '',
+      '【第四步：格式规范与安全边界】',
+      '1. 严禁下达医疗诊断、分析病情、解释偏高偏低原因或提供用药建议。',
+      '2. 严禁推测或臆造任何模糊不清、部分裁剪的数值。',
+      '3. 严格仅输出标准 JSON，禁止包含任何 Markdown 格式说明（如 ```json ... ```）或冗余问候语。',
+      'Schema: {"dateCandidates":[{"value":"YYYY-MM-DD","type":"specimen|examination|report|unknown","rawLabel":"printed label"}],"observations":[{"metricCode":"ALT|AST","sourceLabel":"printed test name","value":number,"unit":"printed unit","referenceRange":{"lower":number,"upper":number},"printedFlag":"printed flag or empty"}]}'
+    ].join('\n');
     const response = await fetch('https://aiplatform.googleapis.com/v1/publishers/google/models/gemini-flash-lite-latest:generateContent', {
       method: 'POST',
       signal: controller.signal,

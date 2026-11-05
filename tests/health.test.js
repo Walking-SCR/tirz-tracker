@@ -85,6 +85,7 @@ test('new private health store starts empty and does not fall back to weight dat
     assert.equal(res.status, 200);
     assert.deepEqual(body.reports, []);
     assert.equal(body.indicators.length, 2);
+    assert.deepEqual(body.indicators.map(metric => metric.targetValue), [50, 50]);
     assert.equal(body.revision, 0);
     assert.deepEqual(paths, ['/repos/Walking-SCR/tirz-tracker-data/contents/data/health.json']);
   } finally {

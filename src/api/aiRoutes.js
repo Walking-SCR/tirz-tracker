@@ -145,7 +145,27 @@ export async function handleAIRoutes(request, env, url, session) {
     clientMimeType, clientPrepareMs, clientRemainingMs, upstreamBudgetMs, requestParseMs: requestParsedAt - startedAt,
     primary: minimaxKey ? 'minimax' : 'gemini'
   });
-  const prompt = `Extract the weight number from this digital bathroom scale photo (white/colored LED digits under glass or LCD 7-segment display). Return ONLY valid JSON: {"weight": number, "unit": "斤"}. Example: {"weight": 168.5, "unit": "斤"}`;
+  const prompt = [
+    '从这张家用电子体重秤照片中识别体重读数。请按以下两步严格执行：',
+    '【第一步：空间自适应纠偏与事实提取】',
+    '1. 视角与任意角度自适应（支持 0°~360° 任意倾斜、倒置与斜角俯拍）：',
+    '   - 用户拍照可能呈任意角度倾斜或带有梯形透视变形，严禁拘泥于正立视角。',
+    '   - 请先定位数字排列的主轴线，并以“小数点必然紧贴数字底线/右下角”、七段数码管横梁或品牌文字的正向为物理基准，在心智中校正阅读视角，顺着文字基线从左至右读取。',
+    '2. 提取原始数字与单位标识：',
+    '   - 提取校正后的原始数字（如 75.0、150.2）及单位指示（覆盖：kg/公斤、斤/市斤、lb/磅、或无明确单位）。',
+    '【第二步：完全穷尽互斥换算为入库单位“斤”】',
+    '根据第一步提取的单位，执行且仅执行以下互斥规则之一：',
+    '  1. 若单位为 kg/公斤：数值乘以 2 转换为斤；',
+    '  2. 若单位为 斤/市斤：数值保持不变；',
+    '  3. 若单位为 lb/磅：数值乘以 0.907 转换为斤；',
+    '  4. 若屏幕无单位指示：成人体重默认按市斤（保持数值不变）；',
+    '  5. 若屏幕显示 Err/Lo/0.0、反光模糊不可辨认、或非秤面照片：数值输出 null。',
+    '【输出格式规范】',
+    '严格仅返回紧凑合法 JSON，禁止任何解释：{"weight": 换算后的数值或null, "unit": "斤"}。',
+    '示例1（任意倾斜/斜拍+kg）：斜向45度俯拍，校准后读到 75.0 kg -> {"weight": 150.0, "unit": "斤"}。',
+    '示例2（正常/倒置+市斤）：读到 168.5 斤 -> {"weight": 168.5, "unit": "斤"}。',
+    '示例3（异常）：显示 Err 或反光看不清 -> {"weight": null, "unit": "斤"}。'
+  ].join(' ');
   let lastError = null;
   let lastStatus = 502;
   const upstreamStatuses = [];
@@ -154,6 +174,7 @@ export async function handleAIRoutes(request, env, url, session) {
   let timeoutCount = 0;
   let attemptCount = 0;
   let useGeminiFallback = true;
+  let explicitNullWeightModel = null;
 
   // --- 主通道：MiniMax-M3（HEIC/HEIF 无法解码，直接跳过）---
   if (minimaxKey && MINIMAX_SUPPORTED_MIME.test(mimeType)) {
@@ -199,6 +220,9 @@ export async function handleAIRoutes(request, env, url, session) {
         } else {
           const data = await res.json();
           const parsed = extractJson(data.choices?.[0]?.message?.content);
+          if (parsed && typeof parsed === 'object' && parsed.weight === null) {
+            explicitNullWeightModel = MINIMAX_MODEL;
+          }
           const weight = parseWeight(parsed);
           if (weight === null) {
             lastError = new Error('MiniMax response did not contain a valid weight');
@@ -271,6 +295,9 @@ export async function handleAIRoutes(request, env, url, session) {
         }
         const data = await res.json();
         const parsed = extractJson(data.candidates?.[0]?.content?.parts?.[0]?.text);
+        if (parsed && typeof parsed === 'object' && parsed.weight === null) {
+          explicitNullWeightModel = model;
+        }
         const weight = parseWeight(parsed);
         if (weight === null) {
           lastError = new Error('Upstream response did not contain a valid weight');
@@ -302,6 +329,12 @@ export async function handleAIRoutes(request, env, url, session) {
   // 仅有 400 且同时伴随超时/网络错误时，不足以判定图片无效；否则一次偶发的回退
   // 失败会被误报成图片格式问题给到用户。
   const badRequest = upstreamStatuses.length > 0 && upstreamStatuses.every(status => status === 400) && timeoutCount === 0 && !geoBlocked;
+
+  // 模型显式返回 weight: null（无法识别、模糊、Err/Lo代码）时，作为正常业务识别结果返回
+  if (explicitNullWeightModel && timeoutCount === 0 && !geoBlocked && !authFailed && !badRequest) {
+    logEvent('info', 'ai_request_completed', { requestId, model: explicitNullWeightModel, durationMs: Date.now() - startedAt, hasWeight: false });
+    return jsonResponse({ success: true, weight: null, unit: '斤', message: '暂无法识别数字，请更换图片', model: explicitNullWeightModel }, 200, requestId);
+  }
   const error = geoBlocked
     ? 'AI_REGION_BLOCKED'
     : timedOut

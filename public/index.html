@@ -145,21 +145,29 @@
     .app-bottom-nav__item { min-height: 56px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; color: #93A4B8; font: 12px ui-monospace, monospace; }
     .app-bottom-nav__item[aria-current="page"] { color: #27F2C3; }
     .app-bottom-nav__item i { font-size: 21px; }
-    #weightPage main, #healthPage { padding-bottom: calc(76px + env(safe-area-inset-bottom, 0px)); }
-    .health-page-header { max-width: 448px; margin: 0 auto; padding: 16px 16px 6px; }
-    .health-page-content { max-width: 448px; margin: 0 auto; padding: 8px 16px calc(88px + env(safe-area-inset-bottom, 0px)); display: flex; flex-direction: column; gap: 18px; }
-    .health-section { border-top: 1px solid rgba(145, 166, 190, 0.16); padding-top: 14px; }
-    .health-task-row { min-height: 52px; display: grid; grid-template-columns: 58px minmax(0, 1fr) auto; align-items: center; gap: 8px; border-bottom: 1px solid rgba(145, 166, 190, 0.12); }
-    .health-chart-wrap { height: 148px; position: relative; }
+    #weightPage main { padding-bottom: calc(76px + env(safe-area-inset-bottom, 0px)); }
+    .health-page-content { max-width: 448px; margin: 0 auto; padding: 4px 16px calc(76px + env(safe-area-inset-bottom, 0px)); display: flex; flex-direction: column; gap: 20px; }
+    .health-section { border-top: 1px solid rgba(145, 166, 190, 0.16); padding-top: 16px; }
+    .health-task-row { min-height: 84px; display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 12px; border-radius: 16px; }
+    .health-task-symbol { width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; border-radius: 12px; background: rgba(39,242,195,.08); border: 1px solid rgba(39,242,195,.25); color: #27F2C3; font-size: 21px; }
+    .health-task-row[data-state="done"] .health-task-symbol { background: rgba(39,242,195,.16); }
+    .health-chart-block { padding: 12px; border-radius: 16px; }
+    .health-chart-wrap { height: 160px; position: relative; margin-top: 8px; }
+    .health-report-card { min-height: 104px; }
+    .health-report-thumb { width: 72px; height: 72px; flex-shrink: 0; border-radius: 16px; overflow: hidden; background: rgba(3,10,18,.75); border: 1px solid rgba(145,166,190,.18); display: flex; align-items: center; justify-content: center; color: #93A4B8; }
+    .health-report-thumb img { width: 100%; height: 100%; object-fit: cover; }
+    .health-report-values { display: flex; flex-wrap: wrap; gap: 4px 10px; margin-top: 6px; font-variant-numeric: tabular-nums; }
+    .health-report-values > span { white-space: nowrap; }
     .health-preview-badge { display: none; }
     body.health-preview-mode .health-preview-badge { display: inline-flex; }
-    .health-modal { width: min(100%, 420px); max-height: min(88dvh, 780px); display: flex; flex-direction: column; background: #0B1A2A; border: 1px solid rgba(145, 166, 190, 0.25); border-radius: 20px; overflow: hidden; box-shadow: 0 20px 60px rgba(0,0,0,.78); }
+    .health-modal { width: min(100%, 440px); max-height: min(88dvh, 720px); display: flex; flex-direction: column; background: #0B1A2A; border: 1px solid rgba(145, 166, 190, 0.25); border-radius: 22px; overflow: hidden; box-shadow: 0 20px 60px rgba(0,0,0,.78); }
     .health-modal__body { overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 16px 18px; }
     .health-form-control { width: 100%; min-height: 44px; border-radius: 12px; border: 1px solid rgba(145,166,190,.28); background: rgba(3,10,18,.75); color: #F4F7FB; padding: 10px 12px; font: 14px ui-monospace, monospace; }
 
     /* 只压缩体重页首屏留白，不缩小时间轴节点或侵占底部安全区。 */
     @media (max-width: 600px) {
-      #appHeader { padding-bottom: 10px; }
+      .app-header { padding-bottom: 10px; }
+      .health-page-content { gap: 16px; }
       #weightMain { display: flex; flex-direction: column; gap: 12px; }
       #weightMain > section { margin-top: 0 !important; flex-shrink: 0; }
       #metricsSummary { padding-top: 12px; }
@@ -569,26 +577,33 @@
   </div>
 
   <section id="healthPage" class="hidden" aria-hidden="true">
-    <header class="health-page-header">
-      <div class="flex items-center justify-between">
-        <div>
-          <h1 class="text-2xl font-black tracking-wider text-white leading-none">健康管理</h1>
-          <p id="healthTodayDate" class="text-sm font-mono text-cyberTextDim mt-1"></p>
-          <span class="health-preview-badge mt-1 rounded-full bg-amber-300/10 px-2 py-0.5 text-[10px] text-amber-300">本地示例数据 · 不会同步</span>
+    <header id="healthHeader" class="app-header health-page-header px-4">
+      <div class="max-w-md mx-auto flex items-center justify-between gap-2">
+        <div class="flex items-center gap-2.5 min-w-0">
+          <div class="w-11 h-11 rounded-2xl bg-gradient-to-tr from-cyberNeon/20 to-cyberCyan/15 border border-cyberNeon/40 flex-shrink-0 flex items-center justify-center text-cyberNeon shadow-[0_0_16px_rgba(39,242,195,0.25)]" aria-hidden="true">
+            <i class="ph-bold ph-heartbeat text-2xl"></i>
+          </div>
+          <div class="min-w-0">
+            <h1 class="text-2xl font-black tracking-wider text-white leading-none">健康记录</h1>
+            <p class="text-sm font-mono text-cyberTextDim whitespace-nowrap truncate mt-1">用药计划与肝功能趋势</p>
+            <span class="health-preview-badge mt-1 rounded-full bg-amber-300/10 px-2 py-0.5 text-[10px] text-amber-300">本地示例数据 · 不会同步</span>
+          </div>
         </div>
-        <button id="btnHealthCalendarSettings" type="button" class="px-3 py-2 rounded-xl border border-[rgba(145,166,190,0.2)] text-cyberTextDim text-xs font-mono inline-flex items-center gap-1.5" aria-label="日历与指标管理">
-          <i class="ph-bold ph-calendar-blank text-base"></i><span>日历设置</span>
+        <button id="btnHealthCalendarSettings" type="button" class="flex flex-col items-end py-1 px-2 rounded-xl hover:bg-white/5 transition flex-shrink-0" aria-label="日历与指标管理">
+          <span class="flex items-center gap-1.5 text-sm font-mono font-bold text-cyberNeon"><i class="ph-bold ph-calendar-blank text-base" aria-hidden="true"></i><span>日历设置</span></span>
+          <span id="healthTodayDate" class="text-sm font-mono text-cyberTextDim mt-1"></span>
         </button>
       </div>
     </header>
 
-    <main class="health-page-content">
-      <section class="glass-surface rounded-2xl p-3 flex items-center justify-between gap-3">
-        <div class="min-w-0">
+    <main id="healthMain" class="health-page-content">
+      <section id="healthCalendarCard" class="glass-surface rounded-2xl p-3 flex items-center gap-3">
+        <div class="w-8 h-8 rounded-xl bg-cyberNeon/10 text-cyberNeon flex items-center justify-center flex-shrink-0" aria-hidden="true"><i class="ph-bold ph-calendar-check text-lg"></i></div>
+        <div class="min-w-0 flex-1">
           <div id="healthCalendarStatus" class="text-sm font-bold text-white">日历尚未添加</div>
           <p id="healthCalendarHint" class="text-[11px] text-cyberTextDim mt-1">添加专用健康日历，事件提醒由 iPhone 日历管理</p>
         </div>
-        <button id="btnAddHealthCalendar" type="button" class="flex-shrink-0 px-3 py-2 rounded-full border border-cyberNeon/60 text-cyberNeon text-xs font-mono font-bold">添加到日历</button>
+        <button id="btnAddHealthCalendar" type="button" class="flex-shrink-0 min-h-11 px-3 rounded-xl border border-cyberNeon/40 text-cyberNeon text-xs font-mono font-bold">添加到日历</button>
       </section>
 
       <section id="healthTodaySection" class="space-y-2">
@@ -597,29 +612,27 @@
           <span id="healthTodayProgress" class="text-xs font-mono text-cyberTextDim">尚未设置提醒</span>
         </div>
         <div id="healthTodayPlan"></div>
-        <button id="btnConfigureHealthPlans" type="button" class="w-full min-h-12 rounded-xl bg-cyberNeon text-[#06111F] font-mono font-bold text-sm">设置现有用药时间</button>
+        <button id="btnConfigureHealthPlans" type="button" class="w-full min-h-14 rounded-2xl bg-cyberNeon text-[#06111F] font-mono font-bold text-sm">设置现有用药时间</button>
       </section>
 
       <section id="healthTrendSection" class="health-section space-y-3">
         <div class="flex items-center justify-between">
           <h2 class="home-section-title font-bold text-white">肝功能趋势</h2>
-          <div class="flex gap-2">
-            <button id="btnManageHealthMetrics" type="button" class="px-2.5 py-2 rounded-lg text-cyberTextDim text-xs font-mono">指标管理</button>
-            <button id="btnAddHealthReport" type="button" class="px-3 py-2 rounded-full border border-cyberNeon/55 text-cyberNeon text-xs font-mono font-bold">+ 添加检查</button>
-          </div>
+          <button id="btnManageHealthMetrics" type="button" class="px-3 min-h-11 rounded-xl border border-[rgba(145,166,190,0.18)] text-cyberTextDim text-xs font-mono hover:text-white transition">指标管理</button>
         </div>
         <p id="healthSourceOrderNotice" class="hidden rounded-lg bg-amber-400/10 text-amber-300 text-xs leading-relaxed px-3 py-2"></p>
         <div id="healthMetricCharts" class="space-y-4"></div>
         <p id="healthTrendFootnote" class="px-1 text-[11px] leading-relaxed text-cyberTextDim"></p>
+        <button id="btnAddHealthReport" type="button" class="w-full h-16 rounded-2xl bg-cyberNeon hover:bg-cyberNeon/90 active:scale-[0.98] transition font-bold text-[#06111F] text-lg flex items-center justify-center gap-2 shadow-[0_0_25px_rgba(39,242,195,0.35)] select-none"><i class="ph-bold ph-camera text-2xl" aria-hidden="true"></i><span>添加检查报告</span></button>
       </section>
 
       <section class="health-section space-y-2">
         <div class="flex items-center justify-between px-1">
           <h2 class="home-section-title font-bold text-white">检查记录</h2>
-          <span id="healthReportCount" class="text-xs font-mono text-cyberTextDim">共0张来源</span>
+          <span id="healthReportCount" class="text-sm font-mono text-cyberTextDim">共 0 条</span>
         </div>
-        <div id="healthReportsList" class="divide-y divide-[rgba(145,166,190,0.14)]"></div>
-        <div id="healthReportsEmpty" class="hidden rounded-xl border border-[rgba(145,166,190,0.18)] p-5 text-center text-sm text-cyberTextDim">还没有检查记录，添加报告图片或手动录入。</div>
+        <div id="healthReportsList" class="space-y-2.5"></div>
+        <div id="healthReportsEmpty" class="hidden glass-surface rounded-2xl p-8 text-center text-sm text-cyberTextDim">还没有检查记录，添加报告图片或手动录入。</div>
       </section>
     </main>
   </section>
@@ -640,8 +653,8 @@
   <div id="healthPlanModal" class="app-overlay hidden">
     <section class="health-modal" role="dialog" aria-modal="true" aria-labelledby="healthPlanTitle">
       <header class="px-5 py-4 border-b border-[rgba(145,166,190,0.18)] flex items-center justify-between">
-        <h2 id="healthPlanTitle" class="text-base font-bold text-white">设置现有用药计划</h2>
-        <button id="btnCloseHealthPlan" class="w-9 h-9 rounded-lg bg-white/5 text-neutral-300" type="button" aria-label="关闭">×</button>
+        <h2 id="healthPlanTitle" class="text-sm font-black tracking-wider text-white font-mono">设置现有用药计划</h2>
+        <button id="btnCloseHealthPlan" class="w-9 h-9 rounded-lg bg-white/5 text-neutral-300 flex items-center justify-center" type="button" aria-label="关闭"><i class="ph-bold ph-x text-sm" aria-hidden="true"></i></button>
       </header>
       <div class="health-modal__body space-y-4">
         <p class="text-xs text-amber-300 leading-relaxed">按你现有医嘱填写时间；每日三次不会自动换算成每8小时。这里仅安排提醒，不建议增减或补服药物。</p>
@@ -679,8 +692,8 @@
   <div id="healthReportModal" class="app-overlay hidden">
     <section class="health-modal" role="dialog" aria-modal="true" aria-labelledby="healthReportTitle">
       <header class="px-5 py-4 border-b border-[rgba(145,166,190,0.18)] flex items-center justify-between">
-        <h2 id="healthReportTitle" class="text-base font-bold text-white">添加检查</h2>
-        <button id="btnCloseHealthReport" class="w-9 h-9 rounded-lg bg-white/5 text-neutral-300" type="button" aria-label="关闭">×</button>
+        <h2 id="healthReportTitle" class="text-sm font-black tracking-wider text-white font-mono">添加检查</h2>
+        <button id="btnCloseHealthReport" class="w-9 h-9 rounded-lg bg-white/5 text-neutral-300 flex items-center justify-center" type="button" aria-label="关闭"><i class="ph-bold ph-x text-sm" aria-hidden="true"></i></button>
       </header>
       <div class="health-modal__body space-y-3">
         <button id="btnPickHealthReport" type="button" class="w-full min-h-16 rounded-xl border border-[rgba(145,166,190,0.24)] bg-black/20 flex items-center justify-center gap-2 text-sm text-cyberNeon">
@@ -718,8 +731,8 @@
   <div id="healthManageModal" class="app-overlay hidden">
     <section class="health-modal" role="dialog" aria-modal="true" aria-labelledby="healthManageTitle">
       <header class="px-5 py-4 border-b border-[rgba(145,166,190,0.18)] flex items-center justify-between">
-        <h2 id="healthManageTitle" class="text-base font-bold text-white">日历与指标管理</h2>
-        <button id="btnCloseHealthManage" class="w-9 h-9 rounded-lg bg-white/5 text-neutral-300" type="button" aria-label="关闭">×</button>
+        <h2 id="healthManageTitle" class="text-sm font-black tracking-wider text-white font-mono">日历与指标管理</h2>
+        <button id="btnCloseHealthManage" class="w-9 h-9 rounded-lg bg-white/5 text-neutral-300 flex items-center justify-center" type="button" aria-label="关闭"><i class="ph-bold ph-x text-sm" aria-hidden="true"></i></button>
       </header>
       <div class="health-modal__body space-y-5">
         <section class="space-y-3">
@@ -1266,6 +1279,12 @@
             <button id="btnSaveGithubToken" type="button" class="w-full py-1.5 rounded-lg bg-white/10 hover:bg-white/15 text-white text-xs font-bold transition">
               保存令牌
             </button>
+            <div class="pt-1.5 space-y-1">
+              <input type="text" id="inputCustomApiBase" placeholder="自定义服务域名 (如 https://tirz.xxx.com)" class="w-full h-8 px-2.5 rounded-lg bg-black/60 border border-white/10 text-xs text-white focus:outline-none">
+              <button id="btnSaveApiBase" type="button" class="w-full py-1.5 rounded-lg bg-white/10 hover:bg-white/15 text-white text-xs font-bold transition">
+                保存自定义服务域名
+              </button>
+            </div>
           </div>
         </details>
 
@@ -1465,10 +1484,18 @@
     }
 
     const TARGET_WEIGHT = 148.0;
-    const WORKER_API_BASE = 'https://tirz-tracker.walkingscr.workers.dev';
+    const urlApiBase = new URLSearchParams(window.location.search).get('api_base') || new URLSearchParams(window.location.search).get('api');
+    if (urlApiBase) {
+      try {
+        localStorage.setItem('tirz_custom_api_base', urlApiBase.trim().replace(/\/+$/, ''));
+      } catch (e) {}
+    }
+    const customApiBase = localStorage.getItem('tirz_custom_api_base');
+    const DEFAULT_WORKER_API_BASE = 'https://tirz-tracker.walkingscr.workers.dev';
+    const WORKER_API_BASE = customApiBase || DEFAULT_WORKER_API_BASE;
     const API_BASE = (window.location.protocol === 'file:' || window.location.hostname.endsWith('.github.io'))
       ? WORKER_API_BASE
-      : '';
+      : (customApiBase || '');
 
     // =========================================================================
     // CloudStorageAdapter 零信任适配器
@@ -1569,12 +1596,20 @@
       },
 
       async bootstrap(email, bootstrapSecret) {
-        const res = await fetch(`${API_BASE}/api/auth/bootstrap`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', ...this.getCustomHeaders() },
-          credentials: 'include',
-          body: JSON.stringify({ email, bootstrapSecret })
-        });
+        let res;
+        try {
+          res = await fetch(`${API_BASE}/api/auth/bootstrap`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', ...this.getCustomHeaders() },
+            credentials: 'include',
+            body: JSON.stringify({ email, bootstrapSecret })
+          });
+        } catch (cause) {
+          const err = new Error('无法连接绑定服务，请检查网络或 VPN 代理后重试。');
+          err.code = 'AUTH_SERVICE_UNREACHABLE';
+          err.cause = cause;
+          throw err;
+        }
         const data = await res.json();
         if (!res.ok) {
           const err = new Error(data.message || '绑定失败');
@@ -2251,8 +2286,8 @@
       setupButton.classList.remove('hidden');
       setupButton.textContent = configured ? '调整用药计划' : '设置现有用药时间';
       setupButton.className = configured
-        ? 'w-full min-h-11 rounded-xl border border-cyberNeon/40 text-cyberNeon font-mono font-bold text-sm'
-        : 'w-full min-h-12 rounded-xl bg-cyberNeon text-[#06111F] font-mono font-bold text-sm';
+        ? 'w-full min-h-11 rounded-2xl border border-cyberNeon/40 text-cyberNeon font-mono font-bold text-sm'
+        : 'w-full min-h-14 rounded-2xl bg-cyberNeon text-[#06111F] font-mono font-bold text-sm';
       if (!configured) {
         progress.textContent = '提醒时间尚未设置';
         const note = document.createElement('div');
@@ -2272,15 +2307,25 @@
         return;
       }
       const list = document.createElement('div');
-      list.className = 'glass-surface rounded-xl px-3';
+      list.className = 'space-y-2.5';
       tasks.forEach(task => {
         const row = document.createElement('div');
-        row.className = 'health-task-row';
+        row.className = 'glass-surface health-task-row';
+        row.dataset.state = task.status;
+        const symbol = document.createElement('span');
+        symbol.className = 'health-task-symbol';
+        symbol.setAttribute('aria-hidden', 'true');
+        const icon = document.createElement('i');
+        const planIcons = { oral: 'ph-pill', topical: 'ph-drop', 'nail-lacquer': 'ph-paint-brush' };
+        icon.className = 'ph-bold ' + (task.status === 'done' ? 'ph-check-circle' : planIcons[task.planId] || 'ph-clock');
+        symbol.appendChild(icon);
+        const body = document.createElement('div');
+        body.className = 'min-w-0';
         const time = document.createElement('span');
-        time.className = 'font-mono text-sm ' + (task.status === 'pending' ? 'text-cyberNeon' : 'text-cyberTextDim');
+        time.className = 'block font-mono text-lg font-bold leading-none ' + (task.status === 'pending' ? 'text-cyberNeon' : 'text-white');
         time.textContent = task.time;
         const title = document.createElement('span');
-        title.className = 'text-sm font-semibold text-white min-w-0 truncate';
+        title.className = 'block mt-1.5 text-xs font-mono text-cyberTextDim truncate';
         title.textContent = task.title;
         const action = document.createElement('div');
         action.className = 'flex items-center gap-2';
@@ -2290,16 +2335,17 @@
             catch (error) { showToast(error.message, 'error'); }
           });
         } else {
-          appendHealthButton(action, '已做', 'min-h-11 px-3 rounded-lg bg-cyberNeon text-[#06111F] text-xs font-bold', async () => {
+          appendHealthButton(action, '已做', 'min-h-11 px-3 rounded-xl bg-cyberNeon text-[#06111F] text-xs font-bold font-mono', async () => {
             try { await sendHealthMutation('/tasks', 'POST', { planId: task.planId, date: getHealthDateKey(), time: task.time, action: 'complete' }); }
             catch (error) { showToast(error.message, 'error'); }
           });
-          appendHealthButton(action, '稍后', 'min-h-11 px-2 rounded-lg border border-[rgba(145,166,190,.2)] text-cyberTextDim text-xs', async () => {
+          appendHealthButton(action, '稍后', 'min-h-11 px-2 rounded-xl border border-[rgba(145,166,190,.18)] text-cyberTextDim text-xs font-mono', async () => {
             try { await sendHealthMutation('/tasks', 'POST', { planId: task.planId, date: getHealthDateKey(), time: task.time, action: 'snooze', minutes: 10 }); }
             catch (error) { showToast(error.message, 'error'); }
           });
         }
-        row.append(time, title, action);
+        body.append(time, title);
+        row.append(symbol, body, action);
         list.appendChild(row);
       });
       root.appendChild(list);
@@ -2321,7 +2367,7 @@
       const count = document.getElementById('healthReportCount');
       const notice = document.getElementById('healthSourceOrderNotice');
       const reports = Array.isArray(healthDocument?.reports) ? [...healthDocument.reports].sort((a, b) => a.sourceOrder - b.sourceOrder) : [];
-      if (count) count.textContent = '共 ' + reports.length + ' 条来源';
+      if (count) count.textContent = '共 ' + reports.length + ' 条';
       if (empty) empty.classList.toggle('hidden', reports.length > 0);
       if (list) list.replaceChildren();
       const unconfirmed = reports.filter(report => !report.dateConfirmed).length;
@@ -2331,26 +2377,55 @@
       }
       reports.forEach(report => {
         const row = document.createElement('div');
-        row.className = 'w-full flex items-center gap-2 py-2.5 border-b border-[rgba(145,166,190,.12)]';
+        row.className = 'glass-surface health-report-card rounded-2xl p-3 flex items-center gap-2 hover:border-cyberNeon/30 transition';
         const open = document.createElement('button');
         open.type = 'button';
-        open.className = 'flex-1 min-w-0 py-1 text-left';
+        open.className = 'flex-1 min-w-0 flex items-center gap-3 text-left';
         open.onclick = () => openHealthReportEditor(report);
+        const thumb = document.createElement('span');
+        thumb.className = 'health-report-thumb';
+        if (report.photoPath) {
+          const image = document.createElement('img');
+          image.src = CloudStorageAdapter.resolvePhotoUrl(report.photoPath);
+          image.alt = '检查报告图片';
+          image.loading = 'lazy';
+          image.onerror = () => {
+            const fileIcon = document.createElement('i');
+            fileIcon.className = 'ph-bold ph-file-text text-3xl';
+            thumb.replaceChildren(fileIcon);
+            thumb.setAttribute('aria-hidden', 'true');
+          };
+          thumb.appendChild(image);
+        } else {
+          thumb.setAttribute('aria-hidden', 'true');
+          const fileIcon = document.createElement('i');
+          fileIcon.className = 'ph-bold ph-file-text text-3xl';
+          thumb.appendChild(fileIcon);
+        }
+        const body = document.createElement('span');
+        body.className = 'min-w-0 flex-1';
         const heading = document.createElement('span');
-        heading.className = 'block text-sm font-semibold text-white';
+        heading.className = 'block text-sm font-bold font-mono text-white leading-snug';
         heading.textContent = healthSourceDateLabel(report);
         const details = document.createElement('span');
-        details.className = 'block mt-1 text-xs text-cyberTextDim font-mono';
-        details.textContent = (report.observations || []).map(item => {
+        details.className = 'health-report-values text-xs font-mono';
+        (report.observations || []).forEach(item => {
+          const measurement = document.createElement('span');
+          measurement.className = item.metricCode === 'ALT' ? 'text-cyberNeon' : item.metricCode === 'AST' ? 'text-cyberPurple' : 'text-cyberTextDim';
           const flag = item.printedFlag === 'high' ? ' ↑' : '';
-          return item.metricCode + ' ' + item.value + ' ' + item.unit + flag;
-        }).join('　');
-        open.append(heading, details);
+          measurement.textContent = (item.metricCode || item.sourceLabel || '指标') + ' ' + item.value + ' ' + item.unit + flag;
+          details.appendChild(measurement);
+        });
+        body.append(heading, details);
+        open.append(thumb, body);
         const remove = document.createElement('button');
         remove.type = 'button';
-        remove.className = 'min-h-11 min-w-11 px-2 text-xs text-cyberDanger flex-shrink-0';
+        remove.className = 'min-h-11 min-w-11 rounded-xl text-cyberTextDim hover:bg-red-500/20 hover:text-cyberDanger flex items-center justify-center flex-shrink-0 transition';
         remove.setAttribute('aria-label', '删除来源 ' + report.sourceOrder + ' 检查记录');
-        remove.textContent = '删除';
+        const deleteIcon = document.createElement('i');
+        deleteIcon.className = 'ph-bold ph-trash text-lg';
+        deleteIcon.setAttribute('aria-hidden', 'true');
+        remove.appendChild(deleteIcon);
         remove.onclick = () => confirmDeleteHealthReport(report);
         row.append(open, remove);
         list?.appendChild(row);
@@ -2368,14 +2443,15 @@
       const unit = metric.unit || rows[0]?.unit || '';
       const color = metric.code === 'AST' ? '#A88BFF' : metric.code === 'ALT' ? '#27F2C3' : '#00F0FF';
       const block = document.createElement('section');
-      block.className = 'health-chart-block';
+      block.className = 'glass-surface health-chart-block';
       const header = document.createElement('div');
-      header.className = 'flex items-baseline justify-between px-1';
+      header.className = 'flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 px-1';
       const heading = document.createElement('h3');
       heading.className = 'text-sm font-bold text-white';
       heading.textContent = metric.label || metric.code || '健康指标';
       const latestLabel = document.createElement('span');
-      latestLabel.className = 'text-xs font-mono text-cyberTextDim';
+      latestLabel.className = 'text-sm font-bold font-mono';
+      latestLabel.style.color = color;
       const latest = datedRows.length ? datedRows[datedRows.length - 1] : null;
       latestLabel.textContent = latest ? '最新 ' + latest.value + ' ' + latest.unit + (latest.dateType === 'report' ? ' · 报告日' : '') : '日期确认后显示';
       header.append(heading, latestLabel);
@@ -2389,6 +2465,7 @@
       block.append(header, plot);
       chartRoot.appendChild(block);
       if (!rows.length) {
+        plot.classList.add('hidden');
         const empty = document.createElement('p');
         empty.className = 'px-1 pb-2 text-[11px] text-cyberTextDim';
         empty.textContent = '添加检查结果后显示此指标趋势。';
@@ -2399,7 +2476,15 @@
       const labels = rows.map(item => chronological ? (item.examDate || item.reportDate).slice(5).replace('-', '/') : '来源' + item.sourceOrder);
       const xValues = rows.map((item, index) => chronological ? Date.parse((item.examDate || item.reportDate) + 'T04:00:00Z') : index + 1);
       const values = rows.map((item, index) => ({ x: xValues[index], y: Number(item.value), sourceOrder: item.sourceOrder, referenceRange: item.referenceRange }));
-      const reference = rows.map((item, index) => ({ x: xValues[index], y: Number.isFinite(Number(item.referenceRange?.upper)) ? Number(item.referenceRange.upper) : null }));
+      // The tracking target is independent of each report's printed range.
+      // Per-report ranges remain attached to their measurements for tooltips.
+      const targetValue = Number.isFinite(Number(metric.targetValue))
+        ? Number(metric.targetValue)
+        : (metric.code === 'ALT' || metric.code === 'AST' ? 50 : null);
+      const reference = rows.map((item, index) => ({
+        x: xValues[index],
+        y: Number.isFinite(targetValue) ? targetValue : null
+      }));
       if (typeof Chart !== 'function') {
         const svgNs = 'http://www.w3.org/2000/svg';
         const svg = document.createElementNS(svgNs, 'svg');
@@ -2408,7 +2493,7 @@
         svg.setAttribute('role', 'img');
         svg.setAttribute('aria-label', (metric.label || metric.code) + '来源顺序数值图');
         const minValue = Math.min(...rows.map(row => Number(row.value)));
-        const maxValue = Math.max(...rows.map(row => Number(row.value)), ...rows.map(row => Number(row.referenceRange?.upper) || 0));
+        const maxValue = Math.max(...rows.map(row => Number(row.value)), ...rows.map(row => Number(row.referenceRange?.upper) || 0), Number.isFinite(targetValue) ? targetValue : 0);
         const yMin = Math.max(0, Math.floor((minValue * 0.82) / 10) * 10);
         const yMax = Math.ceil((maxValue * 1.08) / 10) * 10 || 10;
         const xAt = index => rows.length < 2 ? 180 : 24 + index * (312 / (rows.length - 1));
@@ -2425,6 +2510,17 @@
         path.setAttribute('points', values.map((point, index) => xAt(index) + ',' + yAt(point.y)).join(' '));
         path.setAttribute('fill', 'none'); path.setAttribute('stroke', color); path.setAttribute('stroke-width', '2.5');
         path.setAttribute('stroke-linecap', 'round'); path.setAttribute('stroke-linejoin', 'round');
+        if (Number.isFinite(targetValue)) {
+          const threshold = document.createElementNS(svgNs, 'line');
+          threshold.setAttribute('x1', String(Math.min(xAt(0), xAt(rows.length - 1))));
+          threshold.setAttribute('x2', String(Math.max(xAt(0), xAt(rows.length - 1))));
+          threshold.setAttribute('y1', String(yAt(targetValue)));
+          threshold.setAttribute('y2', String(yAt(targetValue)));
+          threshold.setAttribute('stroke', 'rgba(147,164,184,.55)');
+          threshold.setAttribute('stroke-width', '1.5');
+          threshold.setAttribute('stroke-dasharray', '5 4');
+          svg.appendChild(threshold);
+        }
         svg.appendChild(path);
         const labeled = new Set([0, rows.length - 1, rows.findIndex(row => row.printedFlag === 'high')].filter(index => index >= 0));
         values.forEach((point, index) => {
@@ -2468,13 +2564,15 @@
             const point = points[index], row = rows[index];
             if (!point || !row || placed.length >= 5) continue;
             const label = String(row.value), width = ctx.measureText(label).width;
+            if (width > chart.chartArea.right - chart.chartArea.left) continue;
+            const textX = Math.min(chart.chartArea.right - width / 2, Math.max(chart.chartArea.left + width / 2, point.x));
             if (placed.some(box => Math.abs(box.x - point.x) < (box.width + width) / 2 + 8)) continue;
             for (const baseline of [point.y - 8, point.y + 17]) {
-              const box = { x: point.x, width, top: baseline - 10, bottom: baseline + 2 };
+              const box = { x: textX, width, top: baseline - 10, bottom: baseline + 2 };
               if (box.top < chart.chartArea.top || box.bottom > chart.chartArea.bottom) continue;
               if (placed.some(other => Math.abs(other.x - box.x) < (other.width + box.width) / 2 + 8 && box.top < other.bottom + 3 && box.bottom + 3 > other.top)) continue;
               ctx.fillStyle = row.printedFlag === 'high' ? '#E5BC78' : color;
-              ctx.fillText(label, point.x, baseline); placed.push(box); break;
+              ctx.fillText(label, textX, baseline); placed.push(box); break;
             }
           }
           ctx.restore();
@@ -2486,7 +2584,7 @@
           labels,
           datasets: [
             { label: metric.label || metric.code, data: values, parsing: false, borderColor: color, backgroundColor: color, borderWidth: 2, tension: 0, pointRadius: 4, pointHoverRadius: 6, fill: false },
-            { label: '该份报告参考上限', data: reference, parsing: false, borderColor: 'rgba(147,164,184,.55)', borderWidth: 1, borderDash: [5, 4], stepped: 'before', pointRadius: 0, spanGaps: false }
+            { label: Number.isFinite(targetValue) ? '目标值 ' + targetValue + ' ' + unit : '目标值未设置', data: reference, parsing: false, borderColor: 'rgba(147,164,184,.55)', borderWidth: 1.5, borderDash: [5, 4], tension: 0, pointRadius: 0, pointHoverRadius: 0, spanGaps: false }
           ]
         },
         plugins: [valueLabels],
@@ -2515,8 +2613,8 @@
           scales: {
             x: {
               type: 'linear',
-              min: xValues.length ? Math.min(...xValues) - (chronological ? 86400000 : 0.35) : 0,
-              max: xValues.length ? Math.max(...xValues) + (chronological ? 86400000 : 0.35) : 5,
+              min: xValues.length ? Math.min(...xValues) - (chronological ? Math.max(86400000, (Math.max(...xValues) - Math.min(...xValues)) * 0.04) : 0.35) : 0,
+              max: xValues.length ? Math.max(...xValues) + (chronological ? Math.max(86400000, (Math.max(...xValues) - Math.min(...xValues)) * 0.04) : 0.35) : 5,
               grid: { color: 'rgba(145,166,190,.08)' },
               ticks: { color: '#93A4B8', maxTicksLimit: 5, font: { size: 10, family: 'monospace' }, callback(value) {
                 return chronological ? new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shanghai', month: 'numeric', day: 'numeric' }).format(new Date(Number(value))) : '来源' + value;
@@ -2524,7 +2622,7 @@
             },
             y: {
               beginAtZero: true,
-              suggestedMax: Math.max(60, ...rows.map(row => Number(row.value) || 0), ...rows.map(row => Number(row.referenceRange?.upper) || 0)) * 1.12,
+              suggestedMax: Math.max(60, ...rows.map(row => Number(row.value) || 0), ...rows.map(row => Number(row.referenceRange?.upper) || 0), Number.isFinite(targetValue) ? targetValue : 0) * 1.12,
               grid: { color: 'rgba(145,166,190,.08)' },
               ticks: { color: '#93A4B8', maxTicksLimit: 4, font: { size: 10, family: 'monospace' } }
             }
@@ -2625,7 +2723,7 @@
         hiddenRows.classList.toggle('hidden', hiddenMetrics.length === 0);
       }
       const title = document.getElementById('healthReportCount');
-      if (title) title.textContent = '共 ' + healthDocument.reports.length + ' 个来源';
+      if (title) title.textContent = '共 ' + healthDocument.reports.length + ' 条';
     }
 
     function switchAppTab(tab) {
@@ -2643,7 +2741,7 @@
       try { localStorage.setItem('tirz_active_main_tab', activeHealthTab); } catch (e) {}
       if (showHealth && authInitializationComplete) {
         const date = document.getElementById('healthTodayDate');
-        if (date) date.textContent = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shanghai', month: 'long', day: 'numeric', weekday: 'long' }).format(new Date());
+        if (date) date.textContent = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shanghai', month: 'long', day: 'numeric' }).format(new Date());
         loadHealthPageData();
       }
       window.scrollTo(0, 0);
@@ -3135,7 +3233,7 @@
         if (userEmail && status.email) userEmail.textContent = status.email;
         if (activeHealthTab === 'health') {
           const date = document.getElementById('healthTodayDate');
-          if (date) date.textContent = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shanghai', month: 'long', day: 'numeric', weekday: 'long' }).format(new Date());
+          if (date) date.textContent = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shanghai', month: 'long', day: 'numeric' }).format(new Date());
           await loadHealthPageData();
         }
 
@@ -4500,7 +4598,9 @@
           hideConfirmInModalErrors();
           showToast('秤面重量自动识别成功！');
         } else {
-          showRecognitionErrorState('未能从照片中读到体重数字，请重试或手动输入。');
+          const failMessage = data.message || '暂无法识别数字，请更换图片';
+          showToast(failMessage, 'error');
+          showRecognitionErrorState(failMessage);
         }
       } catch (err) {
         if (scanContext.cancelled) return;
@@ -5606,6 +5706,24 @@
         };
       }
 
+      // 保存自定义服务域名 (针对国内直连/独立域名加速)
+      const inputCustomApiBase = document.getElementById('inputCustomApiBase');
+      const btnSaveApiBase = document.getElementById('btnSaveApiBase');
+      if (inputCustomApiBase && btnSaveApiBase) {
+        inputCustomApiBase.value = localStorage.getItem('tirz_custom_api_base') || '';
+        btnSaveApiBase.onclick = () => {
+          const val = inputCustomApiBase.value.trim().replace(/\/+$/, '');
+          if (val) {
+            localStorage.setItem('tirz_custom_api_base', val);
+            showToast('已保存自定义服务域名');
+          } else {
+            localStorage.removeItem('tirz_custom_api_base');
+            showToast('已恢复默认服务域名');
+          }
+          setTimeout(() => window.location.reload(), 600);
+        };
+      }
+
       // 10. 登录与设备绑定弹窗
       const authModal = document.getElementById('authModal');
       const btnCloseAuthModal = document.getElementById('btnCloseAuthModal');
@@ -5737,12 +5855,12 @@
       if ('caches' in window) {
         caches.keys().then(names => {
           for (let name of names) {
-            if (name !== 'tirz-tracker-v6.5') caches.delete(name);
+            if (name !== 'tirz-tracker-v6.6') caches.delete(name);
           }
         });
       }
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/sw.js?v=6.5', { updateViaCache: 'none' })
+        navigator.serviceWorker.register('/sw.js?v=6.6', { updateViaCache: 'none' })
           .then(reg => {
             reg.update();
             reg.onupdatefound = () => {

@@ -259,7 +259,7 @@ test('OCR frontend does not label service, network or unreadable-result errors a
   const cases = [
     { status: 502, body: { error: 'AI_AUTH_FAILED', message: '识别服务认证失败' }, expected: 'error', message: '识别服务认证失败' },
     { status: 504, body: { error: 'AI_UPSTREAM_TIMEOUT' }, expected: 'timeout' },
-    { status: 200, body: { weight: null }, expected: 'error', message: '未能从照片中读到体重数字' },
+    { status: 200, body: { weight: null }, expected: 'error', message: '暂无法识别数字，请更换图片' },
     { networkError: true, expected: 'error', message: '无法连接识别服务' }
   ];
   for (const example of cases) {
@@ -448,9 +448,9 @@ test('mobile first-screen fitting reserves navigation space without shrinking th
   }
 });
 
-test('Service Worker cache version is v6.5 in sw.js and public/sw.js', () => {
+test('Service Worker cache version is v6.6 in sw.js and public/sw.js', () => {
   const rootSw = fs.readFileSync('sw.js', 'utf-8');
   const publicSw = fs.readFileSync('public/sw.js', 'utf-8');
-  assert.ok(rootSw.includes('tirz-tracker-v6.5'), 'sw.js must contain cache v6.5');
-  assert.ok(publicSw.includes('tirz-tracker-v6.5'), 'public/sw.js must contain cache v6.5');
+  assert.ok(rootSw.includes('tirz-tracker-v6.6'), 'sw.js must contain cache v6.6');
+  assert.ok(publicSw.includes('tirz-tracker-v6.6'), 'public/sw.js must contain cache v6.6');
 });
