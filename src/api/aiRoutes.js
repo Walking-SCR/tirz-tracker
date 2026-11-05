@@ -20,17 +20,23 @@ const GEMINI_ENDPOINTS = [
 
 function extractJson(text) {
   if (!text) return null;
-  try { return JSON.parse(text.trim()); } catch {}
+  const clean = text.trim();
+  const normalize = (s) => s.replace(/，/g, ',').replace(/：/g, ':');
+  try { return JSON.parse(clean); } catch { }
+  try { return JSON.parse(normalize(clean)); } catch { }
   const codeFenceMatch = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
   if (codeFenceMatch) {
-    try { return JSON.parse(codeFenceMatch[1].trim()); } catch {}
+    try { return JSON.parse(codeFenceMatch[1].trim()); } catch { }
+    try { return JSON.parse(normalize(codeFenceMatch[1].trim())); } catch { }
   }
   const firstBrace = text.indexOf('{');
   const lastBrace = text.lastIndexOf('}');
   if (firstBrace !== -1 && lastBrace > firstBrace) {
-    try { return JSON.parse(text.substring(firstBrace, lastBrace + 1)); } catch {}
+    const jsonStr = text.substring(firstBrace, lastBrace + 1);
+    try { return JSON.parse(jsonStr); } catch { }
+    try { return JSON.parse(normalize(jsonStr)); } catch { }
   }
-  const numMatch = text.match(/(\d{2,3}(?:\.\d{1,2})?)/);
+  const numMatch = text.match(/"weight"\s*:\s*"?(\d{2,3}(?:\.\d{1,2})?)"?/) || text.match(/(\d{2,3}(?:\.\d{1,2})?)/);
   return numMatch ? { weight: parseFloat(numMatch[1]), unit: '斤' } : null;
 }
 
@@ -59,7 +65,7 @@ function readUpstreamReason(upstreamText) {
   try {
     const parsedError = JSON.parse(upstreamText);
     reason = parsedError.error?.message || parsedError.message || reason;
-  } catch {}
+  } catch { }
   return reason;
 }
 
