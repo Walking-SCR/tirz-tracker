@@ -4549,6 +4549,9 @@
       }));
 
       try {
+        const latestRec = (typeof weightRecords !== 'undefined' && Array.isArray(weightRecords) && weightRecords.length > 0) ? weightRecords[0] : null;
+        const lastWeight = latestRec && Number.isFinite(latestRec.weight) ? latestRec.weight : undefined;
+
         const res = await fetch(`${API_BASE}/api/ai/analyze-scale`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', ...CloudStorageAdapter.getCustomHeaders() },
@@ -4557,6 +4560,7 @@
           body: JSON.stringify({
             imageBase64: base64Image,
             requestId: scanContext.requestId,
+            lastWeight: lastWeight,
             clientPrepareMs: scanContext.prepareMs,
             clientRemainingMs: Math.max(0, Math.floor(scanContext.deadlineAt - performance.now())),
             clientInputBytes: scanContext.inputBytes,

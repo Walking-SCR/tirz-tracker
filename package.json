@@ -15,6 +15,9 @@
   "keywords": ["tirzepatide", "glp1", "health", "tracker", "pwa", "cloudflare-worker"],
   "author": "Walking-SCR",
   "license": "MIT",
+  "engines": {
+    "node": ">=20.0.0"
+  },
   "devDependencies": {
     "wrangler": "^3.109.2"
   }

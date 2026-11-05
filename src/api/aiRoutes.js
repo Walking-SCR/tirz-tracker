@@ -154,6 +154,7 @@ export async function handleAIRoutes(request, env, url, session) {
   ));
   const clientInputBytes = boundedClientMetric(body?.clientInputBytes, 100_000_000);
   const clientImageBytes = boundedClientMetric(body?.clientImageBytes, 10_000_000);
+  const clientLastWeight = boundedClientMetric(body?.lastWeight, 500);
   const clientMimeType = typeof body?.clientMimeType === 'string' && /^image\/[a-z0-9.+-]{1,32}$/i.test(body.clientMimeType)
     ? body.clientMimeType.toLowerCase()
     : undefined;
@@ -190,7 +191,7 @@ export async function handleAIRoutes(request, env, url, session) {
 
   logEvent('info', 'ai_request_started', {
     requestId, mimeType, imageBase64Length: pureBase64.length,
-    clientImageBytes, clientInputBytes,
+    clientImageBytes, clientInputBytes, clientLastWeight,
     clientMimeType, clientPrepareMs, clientRemainingMs, upstreamBudgetMs, requestParseMs: requestParsedAt - startedAt,
     primary: minimaxKey ? 'minimax' : 'gemini'
   });
@@ -199,9 +200,10 @@ export async function handleAIRoutes(request, env, url, session) {
     '【第一步：空间自适应纠偏与事实提取】',
     '1. 视角与任意角度自适应（支持 0°~360° 任意倾斜、倒置与斜角俯拍）：',
     '   - 用户拍照可能呈任意角度倾斜或带有梯形透视变形，严禁拘泥于正立视角。',
-    '   - 请先定位数字排列的主轴线，并以“小数点必然紧贴数字底线/右下角”、七段数码管横梁或品牌文字的正向为物理基准，在心智中校正阅读视角，顺着文字基线从左至右读取。',
+    '   - 请先定位数字排列的主轴线，并以“小数点必然紧贴数字底线/右下角”、发光笔画、或品牌文字/LOGO的正向为物理基准，在心智中校正阅读视角，顺着文字基线从左至右读取。',
+    '   - 特别注意点阵屏（如小米体脂秤等由离散发光小圆点构成的LED屏）：数字由点阵拼接而成，照片可能逆时针或顺时针侧立旋转90度，必须整体旋转找正视线方向，严格按正确朝向识别整行数字（例如 162.1 绝不能因侧看错位看成 74.2 或 148.4）。',
     '2. 提取原始数字与单位标识：',
-    '   - 提取校正后的原始数字（如 75.0、150.2）及单位指示（覆盖：kg/公斤、斤/市斤、lb/磅、或无明确单位）。',
+    '   - 提取校正后的原始数字（如 75.0、150.2、162.1）及单位指示（覆盖：kg/公斤、斤/市斤、lb/磅、或无明确单位）。',
     '【第二步：完全穷尽互斥换算为入库单位“斤”】',
     '根据第一步提取的单位，执行且仅执行以下互斥规则之一：',
     '  1. 若单位为 kg/公斤：数值乘以 2 转换为斤；',
@@ -212,7 +214,7 @@ export async function handleAIRoutes(request, env, url, session) {
     '【输出格式规范】',
     '严格仅返回紧凑合法 JSON，禁止任何解释：{"weight": 换算后的数值或null, "unit": "斤"}。',
     '示例1（任意倾斜/斜拍+kg）：斜向45度俯拍，校准后读到 75.0 kg -> {"weight": 150.0, "unit": "斤"}。',
-    '示例2（正常/倒置+市斤）：读到 168.5 斤 -> {"weight": 168.5, "unit": "斤"}。',
+    '示例2（正常/倒置/侧立+市斤）：读到 168.5 斤 -> {"weight": 168.5, "unit": "斤"}。',
     '示例3（异常）：显示 Err 或反光看不清 -> {"weight": null, "unit": "斤"}。'
   ].join(' ');
   let lastError = null;
@@ -224,6 +226,7 @@ export async function handleAIRoutes(request, env, url, session) {
   let attemptCount = 0;
   let useGeminiFallback = true;
   let explicitNullWeightModel = null;
+  let minimaxCandidate = null;
 
   // --- 主通道：MiniMax-M3（HEIC/HEIF 无法解码，直接跳过）---
   if (minimaxKey && MINIMAX_SUPPORTED_MIME.test(mimeType)) {
@@ -277,8 +280,17 @@ export async function handleAIRoutes(request, env, url, session) {
             lastError = new Error('MiniMax response did not contain a valid weight');
             logEvent('warn', 'ai_upstream_error', { requestId, endpoint: 'minimax', model: MINIMAX_MODEL, status: 200, reason: 'invalid_model_payload', durationMs: Date.now() - attemptStartedAt });
           } else {
-            logEvent('info', 'ai_request_completed', { requestId, endpoint: 'minimax', model: MINIMAX_MODEL, durationMs: Date.now() - startedAt, hasWeight: true });
-            return jsonResponse({ success: true, weight, unit: parsed.unit || '斤', confidence: parsed.confidence || 'high', model: MINIMAX_MODEL }, 200, requestId);
+            // 交叉复核机制：若配置了 Gemini 兜底通道且客户端传入了历史最近体重 clientLastWeight，
+            // 且 MiniMax 识别数值突变异常（例如相差 > 8 斤，如 162 斤误识为 148.4 斤），
+            // 在剩余预算充裕（> 2.5s）时，不盲信 MiniMax，启动 Gemini 交叉复核！
+            const isSuspiciousJump = geminiKey && clientLastWeight && Math.abs(weight - clientLastWeight) > 8 && getRemainingUpstreamBudgetMs(startedAt, upstreamBudgetMs) > 2500;
+            if (isSuspiciousJump) {
+              logEvent('warn', 'ai_suspicious_jump_detected', { requestId, minimaxWeight: weight, clientLastWeight });
+              minimaxCandidate = { weight, unit: parsed.unit || '斤', confidence: parsed.confidence || 'high' };
+            } else {
+              logEvent('info', 'ai_request_completed', { requestId, endpoint: 'minimax', model: MINIMAX_MODEL, durationMs: Date.now() - startedAt, hasWeight: true });
+              return jsonResponse({ success: true, weight, unit: parsed.unit || '斤', confidence: parsed.confidence || 'high', model: MINIMAX_MODEL }, 200, requestId);
+            }
           }
         }
       } catch (err) {
@@ -383,6 +395,12 @@ export async function handleAIRoutes(request, env, url, session) {
   if (explicitNullWeightModel && timeoutCount === 0 && !geoBlocked && !authFailed && !badRequest) {
     logEvent('info', 'ai_request_completed', { requestId, model: explicitNullWeightModel, durationMs: Date.now() - startedAt, hasWeight: false });
     return jsonResponse({ success: true, weight: null, unit: '斤', message: '暂无法识别数字，请更换图片', model: explicitNullWeightModel }, 200, requestId);
+  }
+
+  // 若 Gemini 失败或超时，但 MiniMax 此前有备选值，兜底使用 MiniMax 结果
+  if (minimaxCandidate) {
+    logEvent('info', 'ai_request_completed', { requestId, endpoint: 'minimax', model: MINIMAX_MODEL, durationMs: Date.now() - startedAt, hasWeight: true, fallbackCandidateUsed: true });
+    return jsonResponse({ success: true, weight: minimaxCandidate.weight, unit: minimaxCandidate.unit || '斤', confidence: 'medium', model: MINIMAX_MODEL }, 200, requestId);
   }
   const error = geoBlocked
     ? 'AI_REGION_BLOCKED'
