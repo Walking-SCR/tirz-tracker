@@ -1,4 +1,4 @@
-import { deleteFile, getFile, getHealthDocument, putFile, uploadPhoto } from '../github.js';
+import { deleteFile, getFile, getHealthDocument, saveHealthDocument, uploadPhoto } from '../github.js';
 import {
   buildHealthCalendar,
   createEmptyHealthDocument,
@@ -53,11 +53,8 @@ async function saveHealth(env, document, sha, expectedRevision, message) {
   if (!env.GITHUB_TOKEN) return jsonResponse({ error: 'STORAGE_NOT_CONFIGURED' }, 503);
   document.revision += 1;
   document.updatedAt = new Date().toISOString();
-  const bytes = new TextEncoder().encode(JSON.stringify(document, null, 2));
-  let binary = '';
-  for (const byte of bytes) binary += String.fromCharCode(byte);
   try {
-    await putFile(env, 'data/health.json', btoa(binary), message, sha, 1);
+    await saveHealthDocument(env, document, sha, message);
     return jsonResponse({ success: true, revision: document.revision });
   } catch (error) {
     const detail = String(error?.message || '');

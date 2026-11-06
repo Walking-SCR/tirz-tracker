@@ -8,6 +8,7 @@ import {
   generateDeviceId,
   parseCookies
 } from '../auth.js';
+import { getEffectiveGithubToken } from '../github.js';
 
 export async function handleAuthRoutes(request, env, url) {
   const path = url.pathname;
@@ -52,14 +53,7 @@ export async function handleAuthRoutes(request, env, url) {
       email: session ? session.email : (device ? device.email : null),
       isDeviceBound: !!device,
       allowedEmailHint: env.ALLOWED_EMAIL ? env.ALLOWED_EMAIL.replace(/(.{2})(.*)(@.*)/, '$1***$3') : null,
-      hasGithubToken: !!(
-        (env.GITHUB_TOKEN && env.GITHUB_TOKEN.trim()) ||
-        (env.GITHUB_PAT && env.GITHUB_PAT.trim()) ||
-        (env.GH_TOKEN && env.GH_TOKEN.trim()) ||
-        (env.PAT && env.PAT.trim()) ||
-        (env.TOKEN && env.TOKEN.trim()) ||
-        (env.GITHUB_DATA_TOKEN && env.GITHUB_DATA_TOKEN.trim())
-      ),
+      hasGithubToken: !!getEffectiveGithubToken(env),
       hasGeminiKey: !!(env.GEMINI_API_KEY && env.GEMINI_API_KEY.trim()),
       hasMinimaxKey: !!(env.MINIMAX_API_KEY && env.MINIMAX_API_KEY.trim())
     }), { headers });

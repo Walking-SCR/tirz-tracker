@@ -1,15 +1,19 @@
 // GitHub REST API 客户端，用于服务端操作私有数据仓库
 
-function getHeaders(env) {
-  const token = (
-    (env.GITHUB_TOKEN && env.GITHUB_TOKEN.trim()) ||
-    (env.GITHUB_PAT && env.GITHUB_PAT.trim()) ||
-    (env.GH_TOKEN && env.GH_TOKEN.trim()) ||
-    (env.PAT && env.PAT.trim()) ||
-    (env.TOKEN && env.TOKEN.trim()) ||
-    (env.GITHUB_DATA_TOKEN && env.GITHUB_DATA_TOKEN.trim()) ||
+export function getEffectiveGithubToken(env) {
+  return (
+    (env?.GITHUB_TOKEN && env.GITHUB_TOKEN.trim()) ||
+    (env?.GITHUB_PAT && env.GITHUB_PAT.trim()) ||
+    (env?.GH_TOKEN && env.GH_TOKEN.trim()) ||
+    (env?.PAT && env.PAT.trim()) ||
+    (env?.TOKEN && env.TOKEN.trim()) ||
+    (env?.GITHUB_DATA_TOKEN && env.GITHUB_DATA_TOKEN.trim()) ||
     ''
   );
+}
+
+function getHeaders(env) {
+  const token = getEffectiveGithubToken(env);
   const headers = {
     'User-Agent': 'tirz-tracker-cloudflare-worker',
     'Accept': 'application/vnd.github.v3+json'

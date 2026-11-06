@@ -1,6 +1,6 @@
 import { getRecords, saveRecords, uploadPhoto, deleteFile, getFile } from '../github.js';
 
-export async function handleRecordRoutes(request, env, url, session) {
+export async function handleRecordRoutes(request, env, url, session, ctx) {
   const path = url.pathname;
   const method = request.method;
 
@@ -56,11 +56,16 @@ export async function handleRecordRoutes(request, env, url, session) {
       return new Response(JSON.stringify({ error: 'MISSING_FIELDS', message: '缺少体重或日期' }), { status: 400 });
     }
 
-    const recordDate = new Date(`${date}T${time || '08:00'}:00`);
-    const timestamp = !isNaN(recordDate.getTime()) ? recordDate.getTime() : Date.now();
+    const clientTimestamp = Number(body.timestamp);
+    const fallbackDate = new Date(`${date}T${time || '08:00'}:00`);
+    const timestamp = (Number.isFinite(clientTimestamp) && clientTimestamp > 0)
+      ? clientTimestamp
+      : (!isNaN(fallbackDate.getTime()) ? fallbackDate.getTime() : Date.now());
     const yyyy = String(new Date(timestamp).getFullYear());
     const mm = String(new Date(timestamp).getMonth() + 1).padStart(2, '0');
-    const recordId = 'wt-' + timestamp;
+    const recordId = (typeof body.id === 'string' && /^wt-\d+$/.test(body.id))
+      ? body.id
+      : 'wt-' + timestamp;
 
     let photoPath = '';
     let uploadedSha = null;
@@ -229,7 +234,9 @@ export async function handleRecordRoutes(request, env, url, session) {
             console.warn('Failed to delete photo on record delete', err);
           }
         };
-        if (session && typeof session.waitUntil === 'function') {
+        if (ctx && typeof ctx.waitUntil === 'function') {
+          ctx.waitUntil(cleanupPhoto());
+        } else if (session && typeof session.waitUntil === 'function') {
           session.waitUntil(cleanupPhoto());
         } else {
           cleanupPhoto().catch(() => {});

@@ -1662,6 +1662,8 @@
 
       async createRecord(record, photoBase64 = null) {
         const payload = {
+          id: record.id,
+          timestamp: record.timestamp,
           date: record.date,
           time: record.time,
           weight: record.weight,
@@ -1817,25 +1819,6 @@
         const res = await fetch(API_BASE + '/api/health/calendar-link', { credentials: 'include', headers: this.getCustomHeaders() });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.message || data.error || '日历订阅链接暂不可用');
-        return data;
-      },
-
-      async healthRequest(path = '', method = 'GET', payload = null) {
-        const res = await fetch(API_BASE + '/api/health' + path, {
-          method,
-          credentials: 'include',
-          headers: payload ? { 'Content-Type': 'application/json', ...this.getCustomHeaders() } : this.getCustomHeaders(),
-          body: payload ? JSON.stringify(payload) : undefined
-        });
-        const data = method === 'GET' && path.endsWith('.ics')
-          ? await res.text()
-          : await res.json().catch(() => ({}));
-        if (!res.ok) {
-          const error = new Error(data.message || data.error || '健康数据请求失败');
-          error.status = res.status;
-          error.code = data.error;
-          throw error;
-        }
         return data;
       },
 
@@ -2820,44 +2803,6 @@
       }
     }
 
-    async function addCalendarToIphone() {
-      if (!getHealthPlanReady()) {
-        openHealthPlanModal();
-        showToast('请先设置三个计划的时间和开始日期');
-        return;
-      }
-      try {
-        const result = await CloudStorageAdapter.getHealthCalendarLink();
-        healthCalendarLink = result;
-        const link = document.getElementById('healthCalendarSubscribeLink');
-        if (link) {
-          link.href = result.webcalUrl;
-          link.classList.remove('hidden');
-          link.textContent = '在iPhone日历中打开订阅';
-        }
-        renderHealthPage();
-        openHealthModal('healthManageModal');
-        showToast('订阅链接已准备好；点击后请在iPhone系统中确认');
-      } catch (error) {
-        showToast(error.message, 'error');
-      }
-    }
-
-    async function stopHealthCalendarSync() {
-      showCyberConfirm({
-        title: '停止后续日历同步？',
-        message: '之后不再从此订阅更新事件。iPhone上已经缓存的事件可能继续显示；如需立即清理，请在iPhone日历里取消订阅。',
-        onConfirm: async () => {
-          try {
-            await persistHealthAction('stop-calendar');
-            healthCalendarLink = null;
-            closeHealthModal('healthManageModal');
-            showToast('已停止后续日历同步；请在iPhone中取消订阅以移除缓存事件');
-          } catch (error) { showToast(error.message, 'error'); }
-        }
-      });
-    }
-
     async function updateHealthMetric(id, changes) {
       try {
         await commitHealthMutation('/indicators/' + encodeURIComponent(id), 'PATCH', changes);
@@ -3227,11 +3172,10 @@
       refreshAllUI();
 
       try {
-        // 性能优化：首屏认证检查、体重与给药同步、以及健康数据并行发起，消除三级串行等待瀑布流（提速约 50%）
+        // 性能优化：首屏认证检查与云端数据同步并行发起，消除串行等待瀑布流；健康数据由 syncWithCloud 内敛加载
         const [status] = await Promise.all([
           CloudStorageAdapter.checkAuth(),
-          syncWithCloud(true),
-          activeHealthTab === 'health' ? loadHealthPageData() : Promise.resolve()
+          syncWithCloud(true)
         ]);
         authInitializationComplete = true;
         const userEmail = document.getElementById('sessionUserEmail');
@@ -5054,7 +4998,7 @@
             } catch (err) {
               console.warn('Cloud update failed', err);
               showToast('本地已保存，云端待重试', 'error', () => {
-                CloudStorageAdapter.updateRecord(editingRecordId, { weight: wt, date, time, condition: cond, remark });
+                CloudStorageAdapter.updateRecord(editingRecordId, changes);
               });
             }
           }
@@ -5069,7 +5013,7 @@
           unit: '斤',
           condition: cond,
           remark,
-          photo: currentParsedImageBase64 ? '' : '',
+          photo: '',
           timestamp
         };
 
@@ -5085,8 +5029,16 @@
         if (CloudStorageAdapter.isAuthenticated()) {
           try {
             const saved = await CloudStorageAdapter.createRecord(newRecord, currentParsedImageBase64 || null);
+            let updated = false;
+            if (saved && saved.id && saved.id !== newRecord.id) {
+              newRecord.id = saved.id;
+              updated = true;
+            }
             if (saved && saved.photo) {
               newRecord.photo = saved.photo;
+              updated = true;
+            }
+            if (updated) {
               saveWeightsToStorage();
               refreshAllUI();
             }
@@ -5973,10 +5925,12 @@
         };
       }
 
-      // 12. 前台唤醒时同步
+      // 12. 前台唤醒时同步（节流：60 秒内已同步且未离线时跳过，且未绑定设备/本地体验时不发起无意义请求）
       document.addEventListener('visibilitychange', () => {
-        if (!document.hidden) {
-          syncWithCloud(true);
+        if (!document.hidden && !CloudStorageAdapter.sessionState.isLocalDemo && CloudStorageAdapter.sessionState.isDeviceBound) {
+          if (!syncState.lastSyncedAt || Date.now() - syncState.lastSyncedAt > 60_000) {
+            syncWithCloud(true);
+          }
         }
       });
 

@@ -6,6 +6,7 @@ import { handlePhotoRoutes } from './api/photoRoutes.js';
 import { handleAIRoutes } from './api/aiRoutes.js';
 import { handleHealthRoutes } from './api/healthRoutes.js';
 import { getFallbackHtml } from './fallbackHtml.js';
+import { getEffectiveGithubToken } from './github.js';
 
 const ALLOWED_EXTERNAL_ORIGINS = new Set(['https://walking-scr.github.io']);
 
@@ -71,15 +72,7 @@ export default {
     }
 
     // 检查所有可能的 Token 环境变量
-    const serverToken = (
-      (env.GITHUB_TOKEN && env.GITHUB_TOKEN.trim()) ||
-      (env.GITHUB_PAT && env.GITHUB_PAT.trim()) ||
-      (env.GH_TOKEN && env.GH_TOKEN.trim()) ||
-      (env.PAT && env.PAT.trim()) ||
-      (env.TOKEN && env.TOKEN.trim()) ||
-      (env.GITHUB_DATA_TOKEN && env.GITHUB_DATA_TOKEN.trim()) ||
-      ''
-    );
+    const serverToken = getEffectiveGithubToken(env);
     const clientToken = request.headers.get('X-GitHub-Token');
     const effectiveToken = serverToken || (clientToken ? clientToken.trim() : '');
     const reqEnv = { ...env, GITHUB_TOKEN: effectiveToken };
@@ -153,7 +146,7 @@ export default {
       }
 
       if (path.startsWith('/api/records')) {
-        const recordRes = await handleRecordRoutes(request, reqEnv, url, session);
+        const recordRes = await handleRecordRoutes(request, reqEnv, url, session, ctx);
         if (recordRes) return addSecurityHeaders(recordRes, request);
       }
 

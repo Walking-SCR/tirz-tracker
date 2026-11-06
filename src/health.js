@@ -22,15 +22,6 @@ export function createEmptyHealthDocument() {
   };
 }
 
-export function normalizeMetricCode(value) {
-  const input = String(value || '').toLocaleLowerCase().replace(/[\s（）()·._-]/g, '');
-  if (!input) return null;
-  for (const metric of HEALTH_METRICS) {
-    if (metric.aliases.some(alias => input.includes(alias.toLocaleLowerCase().replace(/[\s（）()·._-]/g, '')))) return metric.code;
-  }
-  return null;
-}
-
 export function validateHealthDate(value) {
   if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
   const [year, month, day] = value.split('-').map(Number);
@@ -52,10 +43,6 @@ export function formatIcsDateTime(date, time) {
     + String(utc.getUTCDate()).padStart(2, '0')
     + 'T' + String(utc.getUTCHours()).padStart(2, '0')
     + String(utc.getUTCMinutes()).padStart(2, '0') + '00Z';
-}
-
-export function escapeIcsText(value) {
-  return String(value || '').replace(/\\/g, '\\\\').replace(/\r?\n/g, '\\n').replace(/,/g, '\\,').replace(/;/g, '\\;');
 }
 
 export function foldIcsLine(line, maxOctets = 75) {
