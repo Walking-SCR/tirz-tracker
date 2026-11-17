@@ -9,7 +9,7 @@
     "sync": "node scripts/sync-html.mjs",
     "build": "node scripts/sync-html.mjs",
     "pretest": "node scripts/sync-html.mjs",
-    "test": "node --test tests/**/*.test.js",
+    "test": "node --test tests/*.test.js",
     "eval:scale": "node tirz-tracker-data/benchmark/eval.mjs"
   },
   "keywords": ["tirzepatide", "glp1", "health", "tracker", "pwa", "cloudflare-worker"],
