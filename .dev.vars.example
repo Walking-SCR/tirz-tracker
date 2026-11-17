@@ -5,8 +5,14 @@
 # 1. GitHub Fine-Grained Personal Access Token (with Contents: Read & write permissions on tirz-tracker-data)
 GITHUB_TOKEN="github_pat_xxxx"
 
-# 2. Random 32+ character key used for HMAC-SHA256 cookie signing
+# 2. Random 32+ character key used for HMAC-SHA256 cookie & calendar URL signing
 AUTH_SIGNING_KEY="your-super-random-long-auth-signing-key-32chars"
 
-# 3. One-time setup password for initial iPhone device authorization
+# 3. One-time setup password for initial iPhone/Mac device authorization (/setup)
 BOOTSTRAP_SECRET="your-device-bootstrap-secret-code"
+
+# 4. Primary scale photo OCR API key (MiniMax-M3 multimodal endpoint)
+MINIMAX_API_KEY="your-minimax-api-key"
+
+# 5. Fallback scale OCR & private lab report OCR API key (Vertex AI / Google Gemini)
+GEMINI_API_KEY="your-gemini-api-key"

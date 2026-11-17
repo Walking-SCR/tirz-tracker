@@ -11,6 +11,11 @@ import {
 const MAX_IMAGE_BASE64_LENGTH = 4_000_000;
 const DATE_TYPES = new Set(['specimen', 'examination', 'report', 'unknown']);
 const METRIC_ID = /^[a-z0-9][a-z0-9_-]{1,39}$/;
+const TASK_RETENTION_DAYS = 180;
+const GEMINI_REPORT_ENDPOINTS = [
+  { name: 'vertex', url: 'https://aiplatform.googleapis.com/v1/publishers/google/models/gemini-flash-lite-latest:generateContent' },
+  { name: 'gemini', url: 'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-lite-latest:generateContent' }
+];
 
 function jsonResponse(body, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -19,20 +24,27 @@ function jsonResponse(body, status = 200) {
   });
 }
 
-function privateCalendarResponse(body, status, contentType = 'text/plain; charset=utf-8') {
-  return new Response(body, {
-    status,
-    headers: {
-      'Content-Type': contentType,
-      'Cache-Control': 'private, no-store, max-age=0',
-      'X-Content-Type-Options': 'nosniff'
-    }
-  });
-}
-
 async function parseBody(request) {
   if (Number(request.headers.get('Content-Length') || 0) > 6_000_000) return { error: 'PAYLOAD_TOO_LARGE' };
   try { return await request.json(); } catch { return { error: 'INVALID_JSON' }; }
+}
+
+function shanghaiYearMonth(now = new Date()) {
+  const shanghaiDate = new Date(now.getTime() + 8 * 3600 * 1000);
+  return {
+    year: String(shanghaiDate.getUTCFullYear()),
+    month: String(shanghaiDate.getUTCMonth() + 1).padStart(2, '0')
+  };
+}
+
+function pruneTaskCompletions(completions) {
+  if (!Array.isArray(completions)) return [];
+  const cutoffMs = Date.now() - TASK_RETENTION_DAYS * 86_400_000;
+  return completions.filter(task => {
+    if (!task || !validateHealthDate(task.date)) return false;
+    const taskMs = Date.parse(`${task.date}T12:00:00+08:00`);
+    return Number.isFinite(taskMs) && taskMs >= cutoffMs;
+  });
 }
 
 async function loadHealth(env) {
@@ -151,76 +163,139 @@ async function analyzeReport(request, env, session) {
   const apiKey = typeof env.GEMINI_API_KEY === 'string' ? env.GEMINI_API_KEY.trim() : '';
   if (!apiKey) return jsonResponse({ error: 'AI_NOT_CONFIGURED', message: '报告识别服务暂未配置' }, 503);
 
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 12_000);
-  try {
-    const prompt = [
-      '你是一个专业的医疗检验报告单结构化数据提取引擎。请对上传的化验单/检验报告单图片进行高精度数字化识别，严格遵守 MECE 原则（相互独立、完全穷尽），按以下四个步骤执行，最终仅返回合法 JSON：',
-      '',
-      '【第一步：图像方向校正与区域锚定】',
-      '1. 360° 全向自适应校正：若图片旋转（90°/180°/270°）、俯拍倾斜或存在透视畸变，请先以单据顶部的医院抬头、检验科名称、横向分割线及表格表头（“项目名称/结果/参考范围/单位”）确定正向阅读基准。',
-      '2. 行对齐防串行：沿表格横向水平基准线阅读，锁定同一数据行。严禁将上下相邻行的数值或参考范围错位套用。若文字被红色公章、折痕压盖，请穿透底色识别打印字体；完全遮挡无法辨认的直接忽略。',
-      '',
-      '【第二步：日期实体提取与互斥分类（完全穷尽 4 种类型）】',
-      '从报告单的页眉、页脚及基本信息栏中提取所有相关日期，格式统一标准化为 "YYYY-MM-DD"（忽略具体时分秒），并严格按印制前缀进行语义分类：',
-      '- specimen（标本采样）：前缀包含“采样时间”、“采集日期”、“采血时间”、“抽血时间”等。',
-      '- examination（检验接收）：前缀包含“接收时间”、“送检日期”、“检验时间”、“测定时间”、“分析时间”等。',
-      '- report（报告发布）：前缀包含“报告时间”、“审核日期”、“核对时间”、“打印日期”等。',
-      '- unknown（未知类型）：单据上印有明确日期但前缀仅为“日期/时间”或无法明确对应上述三种流程。',
-      '【反例排除】：出生日期、就诊/挂号日期、病历建立日期、软件系统版权年份严禁作为化验日期提取。',
-      '',
-      '【第三步：目标肝酶指标提取与槽位清洗】',
-      '仅提取以下已配置的两种肝酶指标（其他无关指标忽略），严格提取 6 个结构化槽位：',
-      '1. metricCode（标准代码）：仅限 "ALT" 或 "AST"。',
-      '   - ALT 别名：ALT、谷丙转氨酶、丙氨酸氨基转移酶、GPT、ALAT。',
-      '   - AST 别名：AST、谷草转氨酶、天门冬氨酸氨基转移酶、GOT、ASAT。',
-      '   - 【互斥排除】：严禁提取“AST/ALT比值”、“谷草/谷丙比值”等复合比值！严禁提取 ALP（碱性磷酸酶）、GGT（谷氨酰转肽酶）等其他酶类。',
-      '2. sourceLabel：单据上打印的项目原始名称（如“丙氨酸氨基转移酶”）。',
-      '3. value：纯测定数值（浮点数或整数，如 86.5）。必须彻底剥离附带的箭头、正负号、星号、字母标记。',
-      '4. unit：单据打印的测定单位（如 "U/L"、"IU/L"）。',
-      '5. referenceRange：参考范围对象。若为双边区间（如 "9-50"、"9~50"），提取为 {"lower": 9, "upper": 50}；若仅有单边上限（如 "<50"、"<=50"），提取为 {"lower": 0, "upper": 50}；若无参考范围或缺失则填 null。',
-      '6. printedFlag：打印的高低/异常标记（如 "↑", "↓", "H", "L", "*", "+" 或文字“偏高”），无任何标记则输出空字符串 ""。',
-      '',
-      '【第四步：格式规范与安全边界】',
-      '1. 严禁下达医疗诊断、分析病情、解释偏高偏低原因或提供用药建议。',
-      '2. 严禁推测或臆造任何模糊不清、部分裁剪的数值。',
-      '3. 严格仅输出标准 JSON，禁止包含任何 Markdown 格式说明（如 ```json ... ```）或冗余问候语。',
-      'Schema: {"dateCandidates":[{"value":"YYYY-MM-DD","type":"specimen|examination|report|unknown","rawLabel":"printed label"}],"observations":[{"metricCode":"ALT|AST","sourceLabel":"printed test name","value":number,"unit":"printed unit","referenceRange":{"lower":number,"upper":number},"printedFlag":"printed flag or empty"}]}'
-    ].join('\n');
-    const response = await fetch('https://aiplatform.googleapis.com/v1/publishers/google/models/gemini-flash-lite-latest:generateContent', {
-      method: 'POST',
-      signal: controller.signal,
-      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
-      body: JSON.stringify({
-        contents: [{ role: 'user', parts: [{ text: prompt }, { inlineData: { mimeType: mime[1].toLowerCase().replace('image/jpg', 'image/jpeg'), data: image } }] }],
-        generationConfig: { responseMimeType: 'application/json', temperature: 0, maxOutputTokens: 1200 }
-      })
-    });
-    if (!response.ok) return jsonResponse({ error: response.status === 429 ? 'AI_RATE_LIMITED' : 'AI_RECOGNITION_FAILED', message: '报告识别暂不可用，请稍后重试或手动录入' }, response.status === 429 ? 503 : 502);
-    const payload = await response.json();
-    const parsed = extractModelJson(payload?.candidates?.[0]?.content?.parts?.[0]?.text);
-    if (!parsed || !Array.isArray(parsed.observations)) return jsonResponse({ error: 'AI_BAD_RESPONSE', message: '未能读取报告字段，请手动核对' }, 502);
-    const observations = parsed.observations.slice(0, 24).flatMap(row => {
-      const metricCode = String(row?.metricCode || '').toUpperCase();
-      const value = Number(row?.value);
-      if (!['ALT', 'AST'].includes(metricCode) || !Number.isFinite(value) || value < 0 || typeof row.unit !== 'string') return [];
-      const referenceRange = validateRange(row.referenceRange);
-      return [{
-        metricCode,
-        sourceLabel: String(row.sourceLabel || '').slice(0, 80),
-        value,
-        unit: row.unit.slice(0, 20),
-        referenceRange,
-        printedFlag: String(row.printedFlag || '').slice(0, 30)
-      }];
-    });
-    return jsonResponse({ success: true, reviewRequired: true, extraction: { dateCandidates: normalizeDateCandidates(parsed.dateCandidates), observations } });
-  } catch (error) {
-    const timedOut = error?.name === 'AbortError';
-    return jsonResponse({ error: timedOut ? 'AI_UPSTREAM_TIMEOUT' : 'AI_RECOGNITION_FAILED', message: timedOut ? '识别超时，请稍后重试或手动录入' : '报告识别暂不可用，请手动核对' }, timedOut ? 504 : 502);
-  } finally {
-    clearTimeout(timeoutId);
+  // 允许客户端传入当前已配置的自定义指标列表，使 OCR 同时识别自定义指标与默认 ALT/AST
+  const customIndicators = Array.isArray(body.indicators)
+    ? body.indicators
+      .filter(item => item && typeof item.id === 'string' && typeof item.label === 'string' && !['ALT', 'AST'].includes(String(item.code || '').toUpperCase()))
+      .slice(0, 12)
+      .map(item => ({ id: item.id.slice(0, 40), label: item.label.trim().slice(0, 50), unit: String(item.unit || '').trim().slice(0, 20) }))
+    : [];
+
+  const customMetricPrompt = customIndicators.length > 0
+    ? [
+      '   - 除 ALT/AST 外，若单据中存在以下用户自定义关注指标，也请一并提取（metricCode 填对应的指标 ID）：',
+      ...customIndicators.map(item => `     * ID "${item.id}"：匹配名称 "${item.label}"${item.unit ? `（常见单位 ${item.unit}）` : ''}`)
+    ].join('\n')
+    : '';
+
+  const prompt = [
+    '你是一个专业的医疗检验报告单结构化数据提取引擎。请对上传的化验单/检验报告单图片进行高精度数字化识别，严格遵守 MECE 原则（相互独立、完全穷尽），按以下四个步骤执行，最终仅返回合法 JSON：',
+    '',
+    '【第一步：图像方向校正与区域锚定】',
+    '1. 360° 全向自适应校正：若图片旋转（90°/180°/270°）、俯拍倾斜或存在透视畸变，请先以单据顶部的医院抬头、检验科名称、横向分割线及表格表头（“项目名称/结果/参考范围/单位”）确定正向阅读基准。',
+    '2. 行对齐防串行：沿表格横向水平基准线阅读，锁定同一数据行。严禁将上下相邻行的数值或参考范围错位套用。若文字被红色公章、折痕压盖，请穿透底色识别打印字体；完全遮挡无法辨认的直接忽略。',
+    '',
+    '【第二步：日期实体提取与互斥分类（完全穷尽 4 种类型）】',
+    '从报告单的页眉、页脚及基本信息栏中提取所有相关日期，格式统一标准化为 "YYYY-MM-DD"（忽略具体时分秒），并严格按印制前缀进行语义分类：',
+    '- specimen（标本采样）：前缀包含“采样时间”、“采集日期”、“采血时间”、“抽血时间”等。',
+    '- examination（检验接收）：前缀包含“接收时间”、“送检日期”、“检验时间”、“测定时间”、“分析时间”等。',
+    '- report（报告发布）：前缀包含“报告时间”、“审核日期”、“核对时间”、“打印日期”等。',
+    '- unknown（未知类型）：单据上印有明确日期但前缀仅为“日期/时间”或无法明确对应上述三种流程。',
+    '【反例排除】：出生日期、就诊/挂号日期、病历建立日期、软件系统版权年份严禁作为化验日期提取。',
+    '',
+    '【第三步：目标检验指标提取与槽位清洗】',
+    '仅提取以下已配置的目标指标（其他无关指标忽略），严格提取 6 个结构化槽位：',
+    '1. metricCode（标准代码）：默认支持 "ALT" 或 "AST"。',
+    '   - ALT 别名：ALT、谷丙转氨酶、丙氨酸氨基转移酶、GPT、ALAT。',
+    '   - AST 别名：AST、谷草转氨酶、天门冬氨酸氨基转移酶、GOT、ASAT。',
+    customMetricPrompt,
+    '   - 【互斥排除】：严禁提取“AST/ALT比值”、“谷草/谷丙比值”等复合比值！',
+    '2. sourceLabel：单据上打印的项目原始名称（如“丙氨酸氨基转移酶”）。',
+    '3. value：纯测定数值（浮点数或整数，如 86.5）。必须彻底剥离附带的箭头、正负号、星号、字母标记。',
+    '4. unit：单据打印的测定单位（如 "U/L"、"IU/L"）。',
+    '5. referenceRange：参考范围对象。若为双边区间（如 "9-50"、"9~50"），提取为 {"lower": 9, "upper": 50}；若仅有单边上限（如 "<50"、"<=50"），提取为 {"lower": 0, "upper": 50}；若无参考范围或缺失则填 null。',
+    '6. printedFlag：打印的高低/异常标记（如 "↑", "↓", "H", "L", "*", "+" 或文字“偏高”），无任何标记则输出空字符串 ""。',
+    '',
+    '【第四步：格式规范与安全边界】',
+    '1. 严禁下达医疗诊断、分析病情、解释偏高偏低原因或提供用药建议。',
+    '2. 严禁推测或臆造任何模糊不清、部分裁剪的数值。',
+    '3. 严格仅输出标准 JSON，禁止包含任何 Markdown 格式说明（如 ```json ... ```）或冗余问候语。',
+    'Schema: {"dateCandidates":[{"value":"YYYY-MM-DD","type":"specimen|examination|report|unknown","rawLabel":"printed label"}],"observations":[{"metricCode":"ALT|AST|<customId>","sourceLabel":"printed test name","value":number,"unit":"printed unit","referenceRange":{"lower":number,"upper":number},"printedFlag":"printed flag or empty"}]}'
+  ].filter(Boolean).join('\n');
+
+  const allowedCustomIds = new Set(customIndicators.map(item => item.id));
+  const startedAt = Date.now();
+  const totalBudgetMs = 15_000;
+  let lastStatus = 502;
+  let timedOut = false;
+
+  for (let i = 0; i < GEMINI_REPORT_ENDPOINTS.length; i++) {
+    const endpoint = GEMINI_REPORT_ENDPOINTS[i];
+    const remainingMs = totalBudgetMs - (Date.now() - startedAt);
+    if (remainingMs <= 500) {
+      timedOut = true;
+      break;
+    }
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), Math.min(12_000, remainingMs));
+    try {
+      const response = await fetch(endpoint.url, {
+        method: 'POST',
+        signal: controller.signal,
+        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+        body: JSON.stringify({
+          contents: [{ role: 'user', parts: [{ text: prompt }, { inlineData: { mimeType: mime[1].toLowerCase().replace('image/jpg', 'image/jpeg'), data: image } }] }],
+          generationConfig: { responseMimeType: 'application/json', temperature: 0, maxOutputTokens: 1200 }
+        })
+      });
+      lastStatus = response.status;
+      if (!response.ok) {
+        const errText = await response.text().catch(() => '');
+        const isGeoOrFallbackable = endpoint.name === 'vertex' && (
+          [404, 408, 429].includes(response.status) || response.status >= 500 || /location is not supported/i.test(errText)
+        );
+        if (isGeoOrFallbackable) continue;
+        return jsonResponse({
+          error: response.status === 429 ? 'AI_RATE_LIMITED' : 'AI_RECOGNITION_FAILED',
+          message: '报告识别暂不可用，请稍后重试或手动录入'
+        }, response.status === 429 ? 503 : 502);
+      }
+
+      const payload = await response.json();
+      const parsed = extractModelJson(payload?.candidates?.[0]?.content?.parts?.[0]?.text);
+      if (!parsed || !Array.isArray(parsed.observations)) {
+        if (endpoint.name === 'vertex') continue;
+        return jsonResponse({ error: 'AI_BAD_RESPONSE', message: '未能读取报告字段，请手动核对' }, 502);
+      }
+
+      const observations = parsed.observations.slice(0, 24).flatMap(row => {
+        const rawCode = String(row?.metricCode || '').trim();
+        const upperCode = rawCode.toUpperCase();
+        const isStandard = ['ALT', 'AST'].includes(upperCode);
+        const isCustom = allowedCustomIds.has(rawCode);
+        const value = Number(row?.value);
+        if ((!isStandard && !isCustom) || !Number.isFinite(value) || value < 0 || typeof row.unit !== 'string') return [];
+        const referenceRange = validateRange(row.referenceRange);
+        if (referenceRange === false) return [];
+        return [{
+          metricId: isCustom ? rawCode : upperCode.toLowerCase(),
+          metricCode: isStandard ? upperCode : null,
+          sourceLabel: String(row.sourceLabel || '').slice(0, 80),
+          value,
+          unit: row.unit.slice(0, 20),
+          referenceRange,
+          printedFlag: String(row.printedFlag || '').slice(0, 30)
+        }];
+      });
+      return jsonResponse({ success: true, reviewRequired: true, extraction: { dateCandidates: normalizeDateCandidates(parsed.dateCandidates), observations } });
+    } catch (error) {
+      if (error?.name === 'AbortError') {
+        timedOut = true;
+        if (endpoint.name === 'vertex' && (totalBudgetMs - (Date.now() - startedAt)) > 2_000) continue;
+      }
+      return jsonResponse({
+        error: timedOut ? 'AI_UPSTREAM_TIMEOUT' : 'AI_RECOGNITION_FAILED',
+        message: timedOut ? '识别超时，请稍后重试或手动录入' : '报告识别暂不可用，请手动核对'
+      }, timedOut ? 504 : 502);
+    } finally {
+      clearTimeout(timeoutId);
+    }
   }
+
+  return jsonResponse({
+    error: timedOut ? 'AI_UPSTREAM_TIMEOUT' : (lastStatus === 429 ? 'AI_RATE_LIMITED' : 'AI_RECOGNITION_FAILED'),
+    message: timedOut ? '识别超时，请稍后重试或手动录入' : '报告识别暂不可用，请稍后重试或手动录入'
+  }, timedOut ? 504 : (lastStatus === 429 ? 503 : 502));
 }
 
 function calendarUrl(origin, version, signature, protocol) {
@@ -254,7 +329,17 @@ async function calendarFeed(request, env, url) {
   });
 }
 
-export async function handleHealthRoutes(request, env, url, session) {
+function scheduleBackgroundCleanup(ctx, session, fn) {
+  if (ctx && typeof ctx.waitUntil === 'function') {
+    ctx.waitUntil(fn());
+  } else if (session && typeof session.waitUntil === 'function') {
+    session.waitUntil(fn());
+  } else {
+    fn().catch(() => {});
+  }
+}
+
+export async function handleHealthRoutes(request, env, url, session, ctx = null) {
   const path = url.pathname;
   const method = request.method;
   if (path === '/api/health/calendar.ics' && method === 'GET') return calendarFeed(request, env, url);
@@ -314,7 +399,8 @@ export async function handleHealthRoutes(request, env, url, session) {
   if (path === '/api/health/reports' && method === 'POST') {
     const body = await parseBody(request);
     if (body.error) return jsonResponse({ error: body.error }, 400);
-    if (!reportsAreValid(body.report, health.indicators.filter(item => !item.deletedAt))) return jsonResponse({ error: 'INVALID_REPORT', message: '请核对日期、数值、单位和参考范围' }, 400);
+    const activeIndicators = health.indicators.filter(item => !item.deletedAt);
+    if (!reportsAreValid(body.report, activeIndicators)) return jsonResponse({ error: 'INVALID_REPORT', message: '请核对日期、数值、单位和参考范围' }, 400);
     const report = {
       id: 'lab-' + crypto.randomUUID(),
       sourceOrder: health.reports.reduce((max, row) => Math.max(max, Number(row.sourceOrder) || 0), 0) + 1,
@@ -324,27 +410,32 @@ export async function handleHealthRoutes(request, env, url, session) {
       dateType: body.report.dateType,
       dateConfirmed: body.report.dateConfirmed === true,
       remarks: String(body.report.remarks || '').slice(0, 120),
-      observations: body.report.observations.map(row => ({
-        metricId: row.metricId,
-        metricCode: health.indicators.find(item => item.id === row.metricId || item.code === row.metricId)?.code || null,
-        sourceLabel: String(row.sourceLabel || '').slice(0, 80),
-        value: Number(row.value),
-        unit: row.unit.trim(),
-        referenceRange: row.referenceRange ? { lower: Number(row.referenceRange.lower), upper: Number(row.referenceRange.upper) } : null,
-        printedFlag: String(row.printedFlag || '').slice(0, 30)
-      })),
+      observations: body.report.observations.map(row => {
+        const matched = activeIndicators.find(item => item.id === row.metricId || item.code === row.metricCode || item.code === row.metricId);
+        return {
+          metricId: matched?.id || row.metricId,
+          metricCode: matched?.code || null,
+          sourceLabel: String(row.sourceLabel || '').slice(0, 80),
+          value: Number(row.value),
+          unit: row.unit.trim(),
+          referenceRange: row.referenceRange ? { lower: Number(row.referenceRange.lower), upper: Number(row.referenceRange.upper) } : null,
+          printedFlag: String(row.printedFlag || '').slice(0, 30)
+        };
+      }),
       photoPath: null
     };
 
+    let uploadedSha = null;
     if (body.photoBase64) {
       const image = String(body.photoBase64);
-      const mime = image.match(/^data:image\/(jpeg|png|webp|heic|heif);base64,/i);
+      const mime = image.match(/^data:image\/(jpeg|jpg|png|webp|heic|heif);base64,/i);
       const pure = image.replace(/^data:[^;]+;base64,/i, '').replace(/\s/g, '');
       if (!mime || pure.length < 100 || pure.length > MAX_IMAGE_BASE64_LENGTH) return jsonResponse({ error: 'INVALID_REPORT_IMAGE' }, 400);
-      const year = String(new Date().getUTCFullYear());
-      const month = String(new Date().getUTCMonth() + 1).padStart(2, '0');
+      const { year, month } = shanghaiYearMonth();
       try {
-        report.photoPath = (await uploadPhoto(env, 'health', year + '/' + month, report.id, image)).path;
+        const uploaded = await uploadPhoto(env, 'health', year + '/' + month, report.id, image);
+        report.photoPath = uploaded.path;
+        uploadedSha = uploaded.sha;
       } catch {
         return jsonResponse({ error: 'REPORT_IMAGE_UPLOAD_FAILED', message: '报告图片未保存，本次记录未入库' }, 502);
       }
@@ -354,8 +445,8 @@ export async function handleHealthRoutes(request, env, url, session) {
     const saved = await saveHealth(env, health, sha, body.expectedRevision, 'Add private liver report ' + report.id);
     if (saved.status >= 400 && report.photoPath) {
       try {
-        const imageFile = await getFile(env, report.photoPath);
-        if (imageFile?.sha) await deleteFile(env, report.photoPath, imageFile.sha, 'Rollback orphaned health report image');
+        const shaToDelete = uploadedSha || (await getFile(env, report.photoPath))?.sha;
+        if (shaToDelete) await deleteFile(env, report.photoPath, shaToDelete, 'Rollback orphaned health report image');
       } catch {}
     }
     return saved.status >= 400 ? saved : jsonResponse({ success: true, report, revision: health.revision });
@@ -368,6 +459,7 @@ export async function handleHealthRoutes(request, env, url, session) {
     const index = health.reports.findIndex(report => report.id === reportMatch[1]);
     if (index < 0) return jsonResponse({ error: 'REPORT_NOT_FOUND' }, 404);
     const current = health.reports[index];
+    const activeIndicators = health.indicators.filter(item => !item.deletedAt);
     const updated = {
       ...current,
       reportDate: body.report?.reportDate !== undefined ? body.report.reportDate : current.reportDate,
@@ -377,19 +469,21 @@ export async function handleHealthRoutes(request, env, url, session) {
       remarks: body.report?.remarks !== undefined ? String(body.report.remarks || '').slice(0, 120) : current.remarks,
       observations: body.report?.observations || current.observations
     };
-    if (!reportsAreValid(updated, health.indicators.filter(item => !item.deletedAt))) {
+    if (!reportsAreValid(updated, activeIndicators)) {
       return jsonResponse({ error: 'INVALID_REPORT', message: '请核对日期类型、指标数值、单位和参考范围' }, 400);
     }
     let newPhotoPath = null;
+    let newPhotoSha = null;
     if (body.photoBase64) {
       const image = String(body.photoBase64);
-      const mime = image.match(/^data:image\/(jpeg|png|webp|heic|heif);base64,/i);
+      const mime = image.match(/^data:image\/(jpeg|jpg|png|webp|heic|heif);base64,/i);
       const pure = image.replace(/^data:[^;]+;base64,/i, '').replace(/\s/g, '');
       if (!mime || pure.length < 100 || pure.length > MAX_IMAGE_BASE64_LENGTH) return jsonResponse({ error: 'INVALID_REPORT_IMAGE' }, 400);
       try {
-        const year = String(new Date().getUTCFullYear());
-        const month = String(new Date().getUTCMonth() + 1).padStart(2, '0');
-        newPhotoPath = (await uploadPhoto(env, 'health', year + '/' + month, updated.id + '-' + crypto.randomUUID(), image)).path;
+        const { year, month } = shanghaiYearMonth();
+        const uploaded = await uploadPhoto(env, 'health', year + '/' + month, updated.id + '-' + crypto.randomUUID(), image);
+        newPhotoPath = uploaded.path;
+        newPhotoSha = uploaded.sha;
         updated.photoPath = newPhotoPath;
       } catch {
         return jsonResponse({ error: 'REPORT_IMAGE_UPLOAD_FAILED' }, 502);
@@ -399,12 +493,18 @@ export async function handleHealthRoutes(request, env, url, session) {
     const saved = await saveHealth(env, health, sha, body.expectedRevision, 'Update private health report ' + updated.id);
     if (saved.status >= 400) {
       if (newPhotoPath) {
-        try { const photo = await getFile(env, newPhotoPath); if (photo?.sha) await deleteFile(env, newPhotoPath, photo.sha, 'Rollback health report image update'); } catch {}
+        try {
+          const shaToDelete = newPhotoSha || (await getFile(env, newPhotoPath))?.sha;
+          if (shaToDelete) await deleteFile(env, newPhotoPath, shaToDelete, 'Rollback health report image update');
+        } catch {}
       }
       return saved;
     }
     if (newPhotoPath && current.photoPath && current.photoPath !== newPhotoPath) {
-      try { const old = await getFile(env, current.photoPath); if (old?.sha) await deleteFile(env, current.photoPath, old.sha, 'Replace private health report image'); } catch {}
+      scheduleBackgroundCleanup(ctx, session, async () => {
+        const old = await getFile(env, current.photoPath);
+        if (old?.sha) await deleteFile(env, current.photoPath, old.sha, 'Replace private health report image');
+      });
     }
     return jsonResponse({ success: true, report: updated, revision: health.revision });
   }
@@ -419,7 +519,10 @@ export async function handleHealthRoutes(request, env, url, session) {
     const saved = await saveHealth(env, health, sha, body.expectedRevision, 'Delete private health report ' + report.id);
     if (saved.status >= 400) return saved;
     if (report.photoPath && /^images\/health\/\d{4}\/\d{2}\/[a-zA-Z0-9_.-]+$/.test(report.photoPath)) {
-      try { const photo = await getFile(env, report.photoPath); if (photo?.sha) await deleteFile(env, report.photoPath, photo.sha, 'Delete private health report image'); } catch {}
+      scheduleBackgroundCleanup(ctx, session, async () => {
+        const photo = await getFile(env, report.photoPath);
+        if (photo?.sha) await deleteFile(env, report.photoPath, photo.sha, 'Delete private health report image');
+      });
     }
     return jsonResponse({ success: true, id: report.id, deletedObservations: report.observations?.length || 0, revision: health.revision });
   }
@@ -456,8 +559,9 @@ export async function handleHealthRoutes(request, env, url, session) {
     if (body.confirmDelete !== true) return jsonResponse({ error: 'CONFIRMATION_REQUIRED' }, 400);
     const indicator = health.indicators.find(item => item.id === indicatorMatch[1] && !item.deletedAt);
     if (!indicator) return jsonResponse({ error: 'INDICATOR_NOT_FOUND' }, 404);
-    const count = health.reports.reduce((sum, report) => sum + report.observations.filter(row => row.metricId === indicator.id || row.metricCode === indicator.code).length, 0);
-    health.reports = health.reports.map(report => ({ ...report, observations: report.observations.filter(row => row.metricId !== indicator.id && row.metricCode !== indicator.code) }));
+    const matchesIndicator = (row) => row.metricId === indicator.id || (indicator.code !== null && row.metricCode === indicator.code);
+    const count = health.reports.reduce((sum, report) => sum + report.observations.filter(matchesIndicator).length, 0);
+    health.reports = health.reports.map(report => ({ ...report, observations: report.observations.filter(row => !matchesIndicator(row)) }));
     health.indicators = health.indicators.filter(item => item.id !== indicator.id);
     const saved = await saveHealth(env, health, sha, body.expectedRevision, 'Delete private health metric and observations');
     return saved.status >= 400 ? saved : jsonResponse({ success: true, deletedObservations: count, revision: health.revision });
@@ -470,7 +574,7 @@ export async function handleHealthRoutes(request, env, url, session) {
       return jsonResponse({ error: 'INVALID_TASK_ACTION' }, 400);
     }
     if (!health.medicationPlans.some(plan => plan.id === body.planId && plan.active !== false)) return jsonResponse({ error: 'PLAN_NOT_FOUND' }, 404);
-    if (!Array.isArray(health.taskCompletions)) health.taskCompletions = [];
+    health.taskCompletions = pruneTaskCompletions(health.taskCompletions);
     const id = body.planId + ':' + body.date + ':' + body.time;
     if (body.action === 'undo') {
       health.taskCompletions = health.taskCompletions.filter(task => task.id !== id);

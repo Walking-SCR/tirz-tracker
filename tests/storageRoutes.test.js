@@ -214,7 +214,7 @@ test('PATCH /api/doses/:id updates dose fields and recomputes timestamp', async 
     assert.equal(data.dose.amount, '5.0mg');
     assert.equal(data.dose.intervalDays, 14);
     assert.equal(data.dose.date, '2026-09-19');
-    assert.equal(data.dose.timestamp, new Date('2026-09-19T21:00:00').getTime());
+    assert.equal(data.dose.timestamp, Date.parse('2026-09-19T21:00:00+08:00'));
     assert.ok(putBody);
   } finally {
     globalThis.fetch = originalFetch;
@@ -298,7 +298,7 @@ test('PATCH /api/records/:id updates fields and recomputes timestamp', async () 
     assert.equal(data.success, true);
     assert.equal(data.record.weight, 167.2);
     assert.equal(data.record.condition, '早餐后');
-    assert.equal(data.record.timestamp, new Date('2026-09-22T08:30:00').getTime());
+    assert.equal(data.record.timestamp, Date.parse('2026-09-22T08:30:00+08:00'));
     assert.ok(putBody);
   } finally {
     globalThis.fetch = originalFetch;

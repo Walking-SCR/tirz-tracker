@@ -99,7 +99,12 @@ export function buildHealthCalendar(health, origin = '') {
     'CALSCALE:GREGORIAN', 'METHOD:PUBLISH', 'X-WR-CALNAME:健康用药', 'X-WR-TIMEZONE:Asia/Shanghai'
   ];
   const plans = Array.isArray(health?.medicationPlans) ? health.medicationPlans : [];
-  const completions = Array.isArray(health?.taskCompletions) ? health.taskCompletions : [];
+  const cutoffMs = Date.now() - 180 * 86_400_000;
+  const completions = (Array.isArray(health?.taskCompletions) ? health.taskCompletions : []).filter(row => {
+    if (!row || !validateHealthDate(row.date)) return false;
+    const ms = Date.parse(`${row.date}T12:00:00+08:00`);
+    return Number.isFinite(ms) && ms >= cutoffMs;
+  });
   const doneDates = (planId, time) => completions
     .filter(row => row.planId === planId && row.time === time && ['done', 'snoozed'].includes(row.status))
     .map(row => row.date);

@@ -1,4 +1,28 @@
-import { getRecords, saveRecords, uploadPhoto, deleteFile, getFile } from '../github.js';
+import { getRecords, mutateRecordsWithRetry, uploadPhoto, deleteFile, getFile } from '../github.js';
+
+// 统一按东八区（Asia/Shanghai, UTC+8）计算时间戳与年月目录，消除 Cloudflare Worker 默认 UTC 导致的跨天/8小时偏差
+function parseShanghaiTimestamp(dateStr, timeStr = '08:00') {
+  const safeDate = String(dateStr || '').trim();
+  const safeTime = String(timeStr || '08:00').trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(safeDate) && /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(safeTime)) {
+    const ms = Date.parse(`${safeDate}T${safeTime}:00+08:00`);
+    if (Number.isFinite(ms)) return ms;
+  }
+  const fallback = new Date(`${safeDate}T${safeTime}:00`);
+  return !isNaN(fallback.getTime()) ? fallback.getTime() : Date.now();
+}
+
+function extractYearMonth(dateStr, timestamp) {
+  const match = String(dateStr || '').match(/^(\d{4})-(\d{2})-\d{2}$/);
+  if (match) {
+    return { yyyy: match[1], mm: match[2] };
+  }
+  const shanghaiDate = new Date(timestamp + 8 * 3600 * 1000);
+  return {
+    yyyy: String(shanghaiDate.getUTCFullYear()),
+    mm: String(shanghaiDate.getUTCMonth() + 1).padStart(2, '0')
+  };
+}
 
 export async function handleRecordRoutes(request, env, url, session, ctx) {
   const path = url.pathname;
@@ -12,7 +36,7 @@ export async function handleRecordRoutes(request, env, url, session, ctx) {
         message: '未配置 GitHub 访问令牌，无法从私有数据仓库读取数据'
       }), {
         status: 503,
-        headers: { 'Content-Type': 'application/json' }
+        headers: { 'Content-Type': 'application/json; charset=utf-8' }
       });
     }
 
@@ -23,20 +47,20 @@ export async function handleRecordRoutes(request, env, url, session, ctx) {
         records = res.records;
       }
     } catch (err) {
-      console.error('GitHub getRecords error:', err);
+      console.error('GitHub getRecords error:', err?.message || 'unknown');
       const isAuth = /401|403|Bad credentials|Requires authentication/.test(String(err?.message || ''));
       return new Response(JSON.stringify({
         error: isAuth ? 'GITHUB_AUTH_FAILED' : 'STORAGE_READ_FAILED',
-        message: isAuth ? 'GitHub Token 无效或无权限访问私有仓库' : '私有仓库读取失败: ' + err.message
+        message: isAuth ? 'GitHub Token 无效或无权限访问私有仓库' : '私有仓库读取失败，请稍后重试'
       }), {
         status: isAuth ? 503 : 502,
-        headers: { 'Content-Type': 'application/json' }
+        headers: { 'Content-Type': 'application/json; charset=utf-8' }
       });
     }
 
     return new Response(JSON.stringify(records), {
       headers: {
-        'Content-Type': 'application/json',
+        'Content-Type': 'application/json; charset=utf-8',
         'Cache-Control': 'no-cache, no-store, must-revalidate'
       }
     });
@@ -48,37 +72,41 @@ export async function handleRecordRoutes(request, env, url, session, ctx) {
     try {
       body = await request.json();
     } catch {
-      return new Response(JSON.stringify({ error: 'INVALID_JSON' }), { status: 400 });
+      return new Response(JSON.stringify({ error: 'INVALID_JSON' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json; charset=utf-8' }
+      });
     }
 
-    const { date, time, weight, unit, condition, remark, photoBase64 } = body;
-    if (!weight || !date) {
-      return new Response(JSON.stringify({ error: 'MISSING_FIELDS', message: '缺少体重或日期' }), { status: 400 });
+    const { date, time, weight, unit, condition, remark, photoBase64 } = body || {};
+    const numericWeight = Number(weight);
+    if (!Number.isFinite(numericWeight) || numericWeight <= 0 || numericWeight > 1000 || !date || !/^\d{4}-\d{2}-\d{2}$/.test(String(date))) {
+      return new Response(JSON.stringify({ error: 'MISSING_FIELDS', message: '缺少有效的体重或日期' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json; charset=utf-8' }
+      });
     }
 
     const clientTimestamp = Number(body.timestamp);
-    const fallbackDate = new Date(`${date}T${time || '08:00'}:00`);
     const timestamp = (Number.isFinite(clientTimestamp) && clientTimestamp > 0)
       ? clientTimestamp
-      : (!isNaN(fallbackDate.getTime()) ? fallbackDate.getTime() : Date.now());
-    const yyyy = String(new Date(timestamp).getFullYear());
-    const mm = String(new Date(timestamp).getMonth() + 1).padStart(2, '0');
-    const recordId = (typeof body.id === 'string' && /^wt-\d+$/.test(body.id))
+      : parseShanghaiTimestamp(date, time || '08:00');
+    const { yyyy, mm } = extractYearMonth(date, timestamp);
+    const recordId = (typeof body.id === 'string' && /^wt-[a-zA-Z0-9_-]{1,40}$/.test(body.id))
       ? body.id
       : 'wt-' + timestamp;
 
     let photoPath = '';
     let uploadedSha = null;
 
-    // 写操作严格要求配置 GITHUB_TOKEN
     if (!env.GITHUB_TOKEN) {
       return new Response(JSON.stringify({
         error: 'STORAGE_NOT_CONFIGURED',
         message: '未配置 GitHub Token，无法同步至私有数据仓库'
-      }), { status: 503, headers: { 'Content-Type': 'application/json' } });
+      }), { status: 503, headers: { 'Content-Type': 'application/json; charset=utf-8' } });
     }
 
-    // 性能优化：照片上传与 records.json 元数据读取并行发起，减少一次网络往返时延（节省 300~500ms）
+    // 性能优化：照片上传与 records.json 元数据读取并行发起，减少一次网络往返时延
     const photoUploadPromise = (photoBase64 && typeof photoBase64 === 'string' && photoBase64.startsWith('data:image'))
       ? uploadPhoto(env, yyyy, mm, `${recordId}.jpg`, photoBase64)
       : Promise.resolve(null);
@@ -91,51 +119,56 @@ export async function handleRecordRoutes(request, env, url, session, ctx) {
         uploadedSha = uploadRes.sha;
       }
     } catch (uploadErr) {
-      console.error('Photo upload failed:', uploadErr);
+      console.error('Photo upload failed:', uploadErr?.message || 'unknown');
       const githubAuthFailed = /GitHub putFile .* error 401/.test(String(uploadErr?.message || ''));
       return new Response(JSON.stringify({
         error: githubAuthFailed ? 'GITHUB_AUTH_FAILED' : 'PHOTO_UPLOAD_FAILED',
         message: githubAuthFailed
           ? 'GitHub Token 无效或已过期，请重新配置 GITHUB_TOKEN'
-          : '秤面照片上传失败: ' + uploadErr.message
-      }), { status: githubAuthFailed ? 503 : 500 });
+          : '秤面照片上传失败，请稍后重试'
+      }), { status: githubAuthFailed ? 503 : 500, headers: { 'Content-Type': 'application/json; charset=utf-8' } });
     }
 
+    const nowIso = new Date().toISOString();
     const newRecord = {
       id: recordId,
-      date: date,
-      time: time || '08:00',
-      weight: parseFloat(weight),
-      unit: unit || '斤',
-      condition: condition || '早上空腹',
-      remark: remark || '',
+      date: String(date),
+      time: typeof time === 'string' && /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(time) ? time : '08:00',
+      weight: Math.round(numericWeight * 10) / 10,
+      unit: typeof unit === 'string' && unit.trim() ? unit.trim().slice(0, 10) : '斤',
+      condition: typeof condition === 'string' && condition.trim() ? condition.trim().slice(0, 24) : '早上空腹',
+      remark: typeof remark === 'string' ? remark.slice(0, 120) : '',
       photo: photoPath,
-      timestamp: timestamp,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
+      timestamp,
+      createdAt: nowIso,
+      updatedAt: nowIso
     };
 
     try {
-      const { records, sha: currentSha, rawParsed } = await recordsPromise;
-      records.unshift(newRecord);
-      await saveRecords(env, records, `Add biometric weight record ${weight}${unit || '斤'} (${date})`, currentSha, rawParsed);
+      const initialSnapshot = await recordsPromise;
+      await mutateRecordsWithRetry(env, (records) => {
+        const filtered = records.filter(r => r.id !== newRecord.id);
+        filtered.unshift(newRecord);
+        filtered.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+        return { records: filtered };
+      }, `Add biometric weight record ${newRecord.weight}${newRecord.unit} (${newRecord.date})`, initialSnapshot);
+
       return new Response(JSON.stringify({ success: true, record: newRecord }), {
-        headers: { 'Content-Type': 'application/json' }
+        headers: { 'Content-Type': 'application/json; charset=utf-8' }
       });
     } catch (saveErr) {
-      console.error('Record save failed, triggering rollback:', saveErr);
-      // 尽力回滚：若照片已上传，则删除这张孤立照片
+      console.error('Record save failed, triggering rollback:', saveErr?.message || 'unknown');
       if (photoPath && uploadedSha) {
         try {
           await deleteFile(env, photoPath, uploadedSha, `Rollback orphaned photo ${photoPath}`);
         } catch (rbErr) {
-          console.warn('Orphaned photo rollback failed:', rbErr);
+          console.warn('Orphaned photo rollback failed:', rbErr?.message || 'unknown');
         }
       }
       return new Response(JSON.stringify({
         error: 'RECORD_SAVE_FAILED',
-        message: '数据写入失败: ' + saveErr.message
-      }), { status: 500 });
+        message: '数据写入失败，请稍后重试'
+      }), { status: 500, headers: { 'Content-Type': 'application/json; charset=utf-8' } });
     }
   }
 
@@ -147,7 +180,7 @@ export async function handleRecordRoutes(request, env, url, session, ctx) {
       return new Response(JSON.stringify({
         error: 'STORAGE_NOT_CONFIGURED',
         message: '未配置 GitHub Token，无法同步至私有数据仓库'
-      }), { status: 503, headers: { 'Content-Type': 'application/json' } });
+      }), { status: 503, headers: { 'Content-Type': 'application/json; charset=utf-8' } });
     }
 
     const targetId = patchTargetId;
@@ -155,46 +188,62 @@ export async function handleRecordRoutes(request, env, url, session, ctx) {
     try {
       body = await request.json();
     } catch {
-      return new Response(JSON.stringify({ error: 'INVALID_JSON' }), { status: 400 });
+      return new Response(JSON.stringify({ error: 'INVALID_JSON' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json; charset=utf-8' }
+      });
     }
 
-    const { records, sha: currentSha, rawParsed } = await getRecords(env);
-    const index = records.findIndex(r => r.id === targetId);
-    if (index === -1) {
-      return new Response(JSON.stringify({ error: 'NOT_FOUND', message: '未找到指定记录' }), { status: 404 });
+    const initialSnapshot = await getRecords(env);
+    const existingTarget = initialSnapshot.records.find(r => r.id === targetId);
+    if (!existingTarget) {
+      return new Response(JSON.stringify({ error: 'NOT_FOUND', message: '未找到指定记录' }), {
+        status: 404,
+        headers: { 'Content-Type': 'application/json; charset=utf-8' }
+      });
     }
 
-    const current = records[index];
-
-    // 若提供了替换用的 base64 图片
-    if (body.photoBase64 && typeof body.photoBase64 === 'string' && body.photoBase64.startsWith('data:image')) {
-      const yyyy = String(new Date(current.timestamp).getFullYear());
-      const mm = String(new Date(current.timestamp).getMonth() + 1).padStart(2, '0');
-      const filename = `${current.id}.jpg`;
-      const uploadRes = await uploadPhoto(env, yyyy, mm, filename, body.photoBase64);
-      current.photo = uploadRes.path;
+    let uploadedPhotoPath = null;
+    if (body?.photoBase64 && typeof body.photoBase64 === 'string' && body.photoBase64.startsWith('data:image')) {
+      const { yyyy, mm } = extractYearMonth(body.date || existingTarget.date, existingTarget.timestamp || Date.now());
+      const uploadRes = await uploadPhoto(env, yyyy, mm, `${existingTarget.id}.jpg`, body.photoBase64);
+      uploadedPhotoPath = uploadRes.path;
     }
 
-    if (body.weight !== undefined) current.weight = parseFloat(body.weight);
-    if (body.date !== undefined) current.date = body.date;
-    if (body.time !== undefined) current.time = body.time;
-    if (body.condition !== undefined) current.condition = body.condition;
-    if (body.remark !== undefined) current.remark = body.remark;
+    const outcome = await mutateRecordsWithRetry(env, (records) => {
+      const index = records.findIndex(r => r.id === targetId);
+      if (index === -1) return { abort: true, notFound: true };
 
-    if (body.date !== undefined || body.time !== undefined) {
-      const recordDate = new Date(`${current.date}T${current.time || '08:00'}:00`);
-      if (!isNaN(recordDate.getTime())) {
-        current.timestamp = recordDate.getTime();
+      const current = records[index];
+      if (uploadedPhotoPath) current.photo = uploadedPhotoPath;
+      if (body.weight !== undefined) {
+        const w = Number(body.weight);
+        if (Number.isFinite(w) && w > 0) current.weight = Math.round(w * 10) / 10;
       }
+      if (typeof body.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(body.date)) current.date = body.date;
+      if (typeof body.time === 'string' && /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(body.time)) current.time = body.time;
+      if (typeof body.condition === 'string') current.condition = body.condition.trim().slice(0, 24);
+      if (typeof body.remark === 'string') current.remark = body.remark.slice(0, 120);
+
+      if (body.date !== undefined || body.time !== undefined) {
+        current.timestamp = parseShanghaiTimestamp(current.date, current.time || '08:00');
+      }
+      current.updatedAt = new Date().toISOString();
+
+      records[index] = current;
+      records.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+      return { records, updatedRecord: current };
+    }, `Update record ${targetId}`, initialSnapshot);
+
+    if (outcome?.notFound) {
+      return new Response(JSON.stringify({ error: 'NOT_FOUND', message: '未找到指定记录' }), {
+        status: 404,
+        headers: { 'Content-Type': 'application/json; charset=utf-8' }
+      });
     }
-    current.updatedAt = new Date().toISOString();
 
-    records[index] = current;
-    records.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
-    await saveRecords(env, records, `Update record ${targetId}`, currentSha, rawParsed);
-
-   return new Response(JSON.stringify({ success: true, record: current }), {
-      headers: { 'Content-Type': 'application/json' }
+    return new Response(JSON.stringify({ success: true, record: outcome.updatedRecord }), {
+      headers: { 'Content-Type': 'application/json; charset=utf-8' }
     });
   }
 
@@ -207,31 +256,35 @@ export async function handleRecordRoutes(request, env, url, session, ctx) {
       return new Response(JSON.stringify({
         error: 'STORAGE_NOT_CONFIGURED',
         message: '未配置 GitHub Token，无法在私有数据仓库删除'
-      }), { status: 503, headers: { 'Content-Type': 'application/json' } });
+      }), { status: 503, headers: { 'Content-Type': 'application/json; charset=utf-8' } });
     }
 
     try {
-      const { records, sha: currentSha, rawParsed } = await getRecords(env);
-      const target = records.find(r => r.id === targetId);
-      if (!target) {
+      let deletedPhoto = '';
+      const outcome = await mutateRecordsWithRetry(env, (records) => {
+        const target = records.find(r => r.id === targetId);
+        if (!target) {
+          return { abort: true, alreadyDeleted: true };
+        }
+        deletedPhoto = target.photo || '';
+        return { records: records.filter(r => r.id !== targetId) };
+      }, `Delete record ${targetId}`);
+
+      if (outcome?.alreadyDeleted) {
         return new Response(JSON.stringify({ success: true, id: targetId, message: '记录已在本地移除' }), {
-          headers: { 'Content-Type': 'application/json' }
+          headers: { 'Content-Type': 'application/json; charset=utf-8' }
         });
       }
 
-      const updated = records.filter(r => r.id !== targetId);
-      await saveRecords(env, updated, `Delete record ${targetId}`, currentSha, rawParsed);
-
-      // 性能优化：尽力清理关联照片，采用非阻塞异步后台清理，无需阻塞前端网络返回
-      if (target.photo && target.photo.startsWith('images/')) {
+      if (deletedPhoto && deletedPhoto.startsWith('images/')) {
         const cleanupPhoto = async () => {
           try {
-            const photoFile = await getFile(env, target.photo);
+            const photoFile = await getFile(env, deletedPhoto);
             if (photoFile && photoFile.sha) {
-              await deleteFile(env, target.photo, photoFile.sha, `Delete associated photo ${target.photo}`);
+              await deleteFile(env, deletedPhoto, photoFile.sha, `Delete associated photo ${deletedPhoto}`);
             }
           } catch (err) {
-            console.warn('Failed to delete photo on record delete', err);
+            console.warn('Failed to delete photo on record delete', err?.message || 'unknown');
           }
         };
         if (ctx && typeof ctx.waitUntil === 'function') {
@@ -244,14 +297,14 @@ export async function handleRecordRoutes(request, env, url, session, ctx) {
       }
 
       return new Response(JSON.stringify({ success: true, id: targetId }), {
-        headers: { 'Content-Type': 'application/json' }
+        headers: { 'Content-Type': 'application/json; charset=utf-8' }
       });
     } catch (delErr) {
-      console.error('Delete record failed:', delErr);
+      console.error('Delete record failed:', delErr?.message || 'unknown');
       return new Response(JSON.stringify({
         error: 'RECORD_DELETE_FAILED',
-        message: '数据删除失败: ' + delErr.message
-      }), { status: 500, headers: { 'Content-Type': 'application/json' } });
+        message: '数据删除失败，请稍后重试'
+      }), { status: 500, headers: { 'Content-Type': 'application/json; charset=utf-8' } });
     }
   }
 

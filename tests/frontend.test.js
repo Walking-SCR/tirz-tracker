@@ -407,7 +407,7 @@ test('mobile goal strip is centered with symmetric spacing and keeps timeline ta
   assert.match(html, /\.metric-value\s*\{[^}]*white-space: nowrap;/, 'Metric values must keep the jin unit on the same line');
   assert.match(html, /font-size: clamp\(24px, 6\.8vw, 30px\)/);
   assert.match(html, /#timelineViewport\s*\{ min-height: 106px;/);
-  assert.match(html, /class="w-10 h-10 rounded-full/);
+  assert.match(html, /(?:class="w-10 h-10 rounded-full|className = 'w-10 h-10 rounded-full)/);
   assert.match(html, /visualViewport\?\.addEventListener\('resize', scheduleWeightFirstScreenFit\)/);
 });
 
@@ -453,4 +453,19 @@ test('Service Worker cache version is v6.6 in sw.js and public/sw.js', () => {
   const publicSw = fs.readFileSync('public/sw.js', 'utf-8');
   assert.ok(rootSw.includes('tirz-tracker-v6.6'), 'sw.js must contain cache v6.6');
   assert.ok(publicSw.includes('tirz-tracker-v6.6'), 'public/sw.js must contain cache v6.6');
+  assert.equal(rootSw, publicSw, 'sw.js and public/sw.js must match');
+  assert.equal(fs.readFileSync('manifest.json', 'utf-8'), fs.readFileSync('public/manifest.json', 'utf-8'), 'manifest.json copies must match');
+  assert.match(rootSw, /heic2any\.min\.js/, 'SW should precache heic2any for offline iPhone photo conversion');
+});
+
+test('frontend script contains zero undefined helper calls or unsafe innerHTML/confirm sinks', () => {
+  const html = fs.readFileSync('index.html', 'utf8');
+  const script = [...html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/g)].sort((a, b) => b[1].length - a[1].length)[0][1];
+  parse(script, { ecmaVersion: 'latest' });
+  assert.doesNotMatch(script, /\bcommitHealthMutation\b/, 'Stale commitHealthMutation calls must not remain');
+  assert.doesNotMatch(script, /\bhealthQuery\b/, 'Stale CloudStorageAdapter.healthQuery calls must not remain');
+  assert.doesNotMatch(script, /\bstartScanCountdown\b/, 'Undefined startScanCountdown calls must not remain');
+  assert.doesNotMatch(script, /\.innerHTML\s*=/, 'No unsafe innerHTML assignments may remain in frontend JS');
+  assert.doesNotMatch(script, /\bconfirm\s*\(/, 'No blocking native confirm() calls may remain');
+  assert.doesNotMatch(html, /value="walkingscr@gmail\.com"|value="tirz2026"/, 'Auth inputs must not prefill personal email or default secret');
 });

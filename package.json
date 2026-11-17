@@ -19,6 +19,7 @@
     "node": ">=20.0.0"
   },
   "devDependencies": {
+    "acorn": "^8.14.0",
     "wrangler": "^3.109.2"
   }
 }

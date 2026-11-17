@@ -15,12 +15,16 @@
   <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
   <meta name="theme-color" content="#06111F">
   
+  <!-- 预连接静态 CDN 域名，降低移动端 TLS 握手时延 -->
+  <link rel="preconnect" href="https://cdn.tailwindcss.com" crossorigin>
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+  <link rel="preconnect" href="https://unpkg.com" crossorigin>
   <!-- Tailwind CSS 样式框架 -->
   <script src="https://cdn.tailwindcss.com"></script>
-  <!-- Chart.js 图表库 -->
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <!-- Phosphor 图标库 -->
-  <script src="https://unpkg.com/@phosphor-icons/web"></script>
+  <!-- Chart.js 图表库（锁定精确版本 + SRI 完整性校验，defer 释放首屏渲染） -->
+  <script defer src="https://cdn.jsdelivr.net/npm/chart.js@4.4.8/dist/chart.umd.min.js" integrity="sha384-T/4KgSWuZEPozpPz7rnnp/5lDSnpY1VPJCojf1S81uTHS1E38qgLfMgVsAeRCWc4" crossorigin="anonymous"></script>
+  <!-- Phosphor 图标库（锁定精确版本 + SRI 完整性校验，defer 释放首屏渲染） -->
+  <script defer src="https://unpkg.com/@phosphor-icons/web@2.1.1" integrity="sha384-cPFV+/abYd3INVFHPmSKpBmcnH+Q+bTZW7dv/EiuShUNPkHyFmRF8PsL7Ibfvunk" crossorigin="anonymous"></script>
   <!-- iOS 照片上传的 HEIC/HEIF 转换库已优化为用户选图时按需异步懒加载，不再阻塞首屏 -->
   <script>
     tailwind.config = {
@@ -1358,7 +1362,7 @@
       <div class="space-y-3 font-mono text-xs">
         <div>
           <label class="text-cyberTextDim block mb-1">本人授权邮箱</label>
-          <input type="email" id="loginEmailInput" value="walkingscr@gmail.com" placeholder="输入授权邮箱" class="w-full h-11 px-3.5 rounded-xl bg-black/70 border border-white/15 text-sm text-white focus:outline-none focus:border-cyberNeon">
+          <input type="email" id="loginEmailInput" value="" autocomplete="email" placeholder="输入本人授权邮箱" class="w-full h-11 px-3.5 rounded-xl bg-black/70 border border-white/15 text-sm text-white focus:outline-none focus:border-cyberNeon">
         </div>
 
         <div id="loginErrorMsg" class="hidden rounded-xl p-2.5 bg-red-500/10 border border-red-500/30 text-[11px] font-mono text-red-400 leading-relaxed"></div>
@@ -1397,11 +1401,11 @@
       <div class="space-y-3 font-mono text-xs">
         <div>
           <label class="text-neutral-300 block mb-1">授权邮箱</label>
-          <input type="email" id="setupEmailInput" value="walkingscr@gmail.com" placeholder="本人邮箱" class="w-full h-10 px-3 rounded-xl bg-black/70 border border-white/15 text-white focus:outline-none focus:border-cyberCyan">
+          <input type="email" id="setupEmailInput" value="" autocomplete="email" placeholder="输入本人授权邮箱" class="w-full h-10 px-3 rounded-xl bg-black/70 border border-white/15 text-white focus:outline-none focus:border-cyberCyan">
         </div>
         <div>
           <label class="text-neutral-300 block mb-1">设备初始化密钥 (BOOTSTRAP_SECRET)</label>
-          <input type="password" id="setupSecretInput" value="tirz2026" placeholder="默认初始口令: tirz2026" class="w-full h-10 px-3 rounded-xl bg-black/70 border border-white/15 text-white focus:outline-none focus:border-cyberNeon">
+          <input type="password" id="setupSecretInput" value="" autocomplete="off" placeholder="输入服务端配置的初始化口令" class="w-full h-10 px-3 rounded-xl bg-black/70 border border-white/15 text-white focus:outline-none focus:border-cyberNeon">
         </div>
       </div>
 
@@ -1519,6 +1523,7 @@
       cleanLegacyTokens() {
         try {
           localStorage.removeItem('tirz_gh_config_v1');
+          localStorage.removeItem('tirz_user_gh_token');
           localStorage.removeItem('github_pat');
           sessionStorage.removeItem('github_pat');
         } catch (e) {}
@@ -1526,9 +1531,6 @@
 
       getCustomHeaders() {
         const headers = {};
-        const userToken = localStorage.getItem('tirz_user_gh_token');
-        if (userToken) headers['X-GitHub-Token'] = userToken.trim();
-
         const authToken = localStorage.getItem('tirz_auth_token') || localStorage.getItem('tirz_device_token');
         if (authToken) headers['Authorization'] = `Bearer ${authToken.trim()}`;
 
@@ -1628,17 +1630,27 @@
         return data;
       },
 
-      async logout() {
+      async logout(revokeDevice = false) {
         try {
           await fetch(`${API_BASE}/api/auth/logout`, {
             method: 'POST',
-            credentials: 'include'
+            headers: { 'Content-Type': 'application/json', ...this.getCustomHeaders() },
+            credentials: 'include',
+            body: JSON.stringify({ revokeDevice })
           });
         } catch (e) {}
         localStorage.removeItem('tirz_auth_token');
-        localStorage.removeItem('tirz_device_token');
-        localStorage.removeItem('tirz_device_bound');
-        this.sessionState = { authenticated: false, email: null, isDeviceBound: false, isLocalDemo: false };
+        if (revokeDevice) {
+          localStorage.removeItem('tirz_device_token');
+          localStorage.removeItem('tirz_device_bound');
+        }
+        this.sessionState = {
+          ...this.sessionState,
+          authenticated: false,
+          email: null,
+          isDeviceBound: revokeDevice ? false : this.sessionState.isDeviceBound,
+          isLocalDemo: false
+        };
       },
 
       isAuthenticated() {
@@ -1797,13 +1809,13 @@
         return data;
       },
 
-      async analyzeHealthReport(imageBase64, signal) {
+      async analyzeHealthReport(imageBase64, signal, indicators = []) {
         const res = await fetch(API_BASE + '/api/health/analyze', {
           method: 'POST',
           credentials: 'include',
           signal,
           headers: { 'Content-Type': 'application/json', ...this.getCustomHeaders() },
-          body: JSON.stringify({ imageBase64 })
+          body: JSON.stringify({ imageBase64, indicators })
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) {
@@ -1976,6 +1988,18 @@
       }
     }
 
+    function setButtonPending(btn, pending, labelText) {
+      if (!btn) return;
+      btn.disabled = pending;
+      if (pending) {
+        const icon = document.createElement('i');
+        icon.className = 'ph-bold ph-spinner animate-spin';
+        btn.replaceChildren(icon, ' ' + labelText);
+      } else {
+        btn.textContent = labelText;
+      }
+    }
+
     const toastCloseBtn = document.getElementById('toastCloseBtn');
     if (toastCloseBtn) toastCloseBtn.onclick = hideToast;
 
@@ -1986,10 +2010,7 @@
       const modal = document.getElementById('customConfirmModal');
       const titleEl = document.getElementById('customConfirmTitle');
       const msgEl = document.getElementById('customConfirmMsg');
-      if (!modal) {
-        if (confirm(message || title)) onConfirm();
-        return;
-      }
+      if (!modal) return;
       if (titleEl) titleEl.textContent = title || '确定执行此操作？';
       if (msgEl) msgEl.textContent = message || '删除后将无法恢复，该记录及其照片等信息会被删除。';
       pendingConfirmAction = onConfirm;
@@ -2052,7 +2073,7 @@
       const geminiBadge = document.getElementById('geminiKeyStatusBadge');
       const auth = CloudStorageAdapter.sessionState;
       if (ghBadge) {
-        ghBadge.textContent = (auth.hasGithubToken || localStorage.getItem('tirz_user_gh_token')) ? '已连接' : '未连接';
+        ghBadge.textContent = auth.hasGithubToken ? '已连接' : '未连接';
       }
       if (geminiBadge) {
         geminiBadge.textContent = auth.hasGeminiKey ? '已可使用' : '不可用';
@@ -2805,20 +2826,26 @@
 
     async function updateHealthMetric(id, changes) {
       try {
-        await commitHealthMutation('/indicators/' + encodeURIComponent(id), 'PATCH', changes);
-      } catch (error) { showToast(error.message, 'error'); }
+        await sendHealthMutation('/indicators/' + encodeURIComponent(id), 'PATCH', changes);
+      } catch (error) {
+        if (error.status === 409) await loadHealthPageData();
+        showToast(error.message, 'error');
+      }
     }
 
     function confirmDeleteHealthMetric(indicator) {
-      const count = healthDocument.reports.reduce((sum, report) => sum + (report.observations || []).filter(row => row.metricId === indicator.id || row.metricCode === indicator.code).length, 0);
+      const count = healthDocument.reports.reduce((sum, report) => sum + (report.observations || []).filter(row => row.metricId === indicator.id || (indicator.code && row.metricCode === indicator.code)).length, 0);
       showCyberConfirm({
         title: '删除指标 ' + indicator.label + '？',
         message: '将删除此指标及当前记录中的' + count + '条数值；其他指标、报告来源和用药日历不受影响。此操作不可从页面撤销。',
         onConfirm: async () => {
           try {
-            await commitHealthMutation('/indicators/' + encodeURIComponent(indicator.id), 'DELETE', { confirmDelete: true });
+            await sendHealthMutation('/indicators/' + encodeURIComponent(indicator.id), 'DELETE', { confirmDelete: true });
             showToast('指标及相关数值已删除');
-          } catch (error) { showToast(error.message, 'error'); }
+          } catch (error) {
+            if (error.status === 409) await loadHealthPageData();
+            showToast(error.message, 'error');
+          }
         }
       });
     }
@@ -2830,9 +2857,12 @@
         message: '将删除此报告来源及其中' + count + '项数值；其他来源、指标和用药计划不受影响。',
         onConfirm: async () => {
           try {
-            await commitHealthMutation('/reports/' + encodeURIComponent(report.id), 'DELETE', { confirmDelete: true });
+            await sendHealthMutation('/reports/' + encodeURIComponent(report.id), 'DELETE', { confirmDelete: true });
             showToast('检查来源已删除');
-          } catch (error) { showToast(error.message, 'error'); }
+          } catch (error) {
+            if (error.status === 409) await loadHealthPageData();
+            showToast(error.message, 'error');
+          }
         }
       });
     }
@@ -2912,10 +2942,15 @@
       if (duplicateNotice) { duplicateNotice.textContent = ''; duplicateNotice.classList.add('hidden'); }
       const indicators = healthDocument.indicators.filter(metric => !metric.deletedAt);
       if (report) {
+        const renderedIds = new Set();
         report.observations.forEach(observation => {
-          const metric = indicators.find(item => item.id === observation.metricId || item.code === observation.metricCode);
-          if (metric) appendHealthObservationEditor(metric, observation);
+          const metric = indicators.find(item => item.id === observation.metricId || (item.code && item.code === observation.metricCode));
+          if (metric) {
+            renderedIds.add(metric.id);
+            appendHealthObservationEditor(metric, observation);
+          }
         });
+        indicators.filter(metric => !renderedIds.has(metric.id)).forEach(metric => appendHealthObservationEditor(metric));
       } else {
         indicators.forEach(metric => appendHealthObservationEditor(metric));
       }
@@ -2933,8 +2968,8 @@
       const indicators = healthDocument.indicators.filter(metric => !metric.deletedAt);
       const mapped = [];
       (extraction.observations || []).forEach(observation => {
-        const metric = indicators.find(item => item.code === observation.metricCode);
-        if (metric) {
+        const metric = indicators.find(item => item.id === observation.metricId || (item.code && item.code === observation.metricCode));
+        if (metric && !mapped.includes(metric.id)) {
           mapped.push(metric.id);
           appendHealthObservationEditor(metric, null, observation);
         }
@@ -2987,7 +3022,8 @@
         healthOcrAbortController = new AbortController();
         const timeout = setTimeout(() => healthOcrAbortController?.abort(), 20_000);
         try {
-          const result = await CloudStorageAdapter.analyzeHealthReport(compressed, healthOcrAbortController.signal);
+          const activeIndicators = (healthDocument?.indicators || []).filter(item => !item.deletedAt);
+          const result = await CloudStorageAdapter.analyzeHealthReport(compressed, healthOcrAbortController.signal, activeIndicators);
           showRecognizedHealthFields(result.extraction || {});
         } finally {
           clearTimeout(timeout);
@@ -3057,7 +3093,7 @@
         const path = healthEditingReportId ? '/reports/' + encodeURIComponent(healthEditingReportId) : '/reports';
         const method = healthEditingReportId ? 'PATCH' : 'POST';
         if (CloudStorageAdapter.sessionState.isLocalDemo) throw new Error('本地预览不会保存真实医疗数据；请登录正式账户后录入。');
-        await CloudStorageAdapter.healthQuery(path, method, { ...payload, expectedRevision: healthDocument.revision || 0 });
+        await CloudStorageAdapter.healthMutation(path, method, { ...payload, expectedRevision: healthDocument.revision || 0 });
         healthDocument = await CloudStorageAdapter.getHealth();
         saveHealthCache();
         renderHealthPage();
@@ -3172,11 +3208,7 @@
       refreshAllUI();
 
       try {
-        // 性能优化：首屏认证检查与云端数据同步并行发起，消除串行等待瀑布流；健康数据由 syncWithCloud 内敛加载
-        const [status] = await Promise.all([
-          CloudStorageAdapter.checkAuth(),
-          syncWithCloud(true)
-        ]);
+        const status = await CloudStorageAdapter.checkAuth();
         authInitializationComplete = true;
         const userEmail = document.getElementById('sessionUserEmail');
         if (userEmail && status?.email) userEmail.textContent = status.email;
@@ -3185,12 +3217,23 @@
           if (date) date.textContent = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shanghai', month: 'long', day: 'numeric' }).format(new Date());
         }
 
-        // 首次访问或 /setup 入口必须明确打开对应授权弹层；不再依赖 CDN 的 hidden 样式或服务端重定向。
+        if (status?.authenticated) {
+          await syncWithCloud(true);
+        } else {
+          updateSyncStatusUI();
+          if (status?.isLocalDemo && activeHealthTab === 'health') {
+            await loadHealthPageData();
+          }
+        }
+
+        // 未登录或 /setup 入口必须明确打开对应授权弹层：
+        // - 若设备尚未绑定（!isDeviceBound）或处于 ?mode=setup：直接引导进入首次设备绑定（deviceSetupModal）
+        // - 若设备已绑定但当前会话已退出（isDeviceBound && !authenticated）：打开免验证码邮箱重登（authModal）
         const setupMode = new URLSearchParams(window.location.search).get('mode') === 'setup';
         const authModal = document.getElementById('authModal');
         const deviceSetupModal = document.getElementById('deviceSetupModal');
-        if (status && !status.isDeviceBound && !status.isLocalDemo) {
-          if (setupMode && deviceSetupModal) {
+        if (status && !status.authenticated && !status.isLocalDemo) {
+          if ((!status.isDeviceBound || setupMode) && deviceSetupModal) {
             deviceSetupModal.classList.remove('hidden');
           } else if (authModal) {
             authModal.classList.remove('hidden');
@@ -3627,7 +3670,7 @@
       if (scheduleNextDateDisplay) scheduleNextDateDisplay.textContent = nextDoseTimestamp ? formatDateDetailed(nextDoseTimestamp) : '未设定';
 
       const weekNames = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
-      container.innerHTML = '';
+      container.replaceChildren();
       container.style.transition = '';
       container.style.transform = '';
 
@@ -3652,23 +3695,60 @@
           };
         };
 
-        let circleHtml = '';
-        let labelHtml = '';
+        const topSpan = document.createElement('span');
+        topSpan.className = 'text-xs font-mono text-cyberTextDim mb-1';
+        topSpan.textContent = dayLabel;
+        node.appendChild(topSpan);
+
+        const circleEl = document.createElement('div');
         if (doseOnThisDay) {
-          circleHtml = `<div class="w-10 h-10 rounded-full bg-cyberPurple text-[#0B1A2A] flex items-center justify-center shadow-[0_0_15px_rgba(168,139,255,0.75)] active:scale-95 transition"><i class="ph-bold ph-syringe text-lg text-[#06111F]"></i></div>`;
-          labelHtml = `<span class="text-xs font-mono font-bold text-cyberPurple mt-1.5 truncate max-w-full">${doseOnThisDay.seq || '给药'}</span><span class="text-[11px] font-mono text-cyberTextDim">${wName}</span>`;
+          circleEl.className = 'w-10 h-10 rounded-full bg-cyberPurple text-[#0B1A2A] flex items-center justify-center shadow-[0_0_15px_rgba(168,139,255,0.75)] active:scale-95 transition';
+          const icon = document.createElement('i');
+          icon.className = 'ph-bold ph-syringe text-lg text-[#06111F]';
+          circleEl.appendChild(icon);
+          node.appendChild(circleEl);
+
+          const seqSpan = document.createElement('span');
+          seqSpan.className = 'text-xs font-mono font-bold text-cyberPurple mt-1.5 truncate max-w-full';
+          seqSpan.textContent = doseOnThisDay.seq || '给药';
+          const weekSpan = document.createElement('span');
+          weekSpan.className = 'text-[11px] font-mono text-cyberTextDim';
+          weekSpan.textContent = wName;
+          node.append(seqSpan, weekSpan);
           openNode(() => openDoseDetail(doseOnThisDay.id));
         } else if (isToday) {
-          circleHtml = `<div class="w-10 h-10 rounded-full bg-[#0B1A2A] border-2 border-cyberNeon flex items-center justify-center shadow-[0_0_14px_rgba(39,242,195,0.8)] active:scale-95 transition"><div class="w-3 h-3 rounded-full bg-cyberNeon shadow-[0_0_8px_#27F2C3]"></div></div>`;
-          labelHtml = `<span class="text-xs font-mono font-bold px-2 py-0.5 rounded-full bg-cyberNeon text-[#06111F] mt-1.5 shadow-sm">今天</span><span class="text-[11px] font-mono text-cyberTextDim mt-0.5">${wName}</span>`;
+          circleEl.className = 'w-10 h-10 rounded-full bg-[#0B1A2A] border-2 border-cyberNeon flex items-center justify-center shadow-[0_0_14px_rgba(39,242,195,0.8)] active:scale-95 transition';
+          const dot = document.createElement('div');
+          dot.className = 'w-3 h-3 rounded-full bg-cyberNeon shadow-[0_0_8px_#27F2C3]';
+          circleEl.appendChild(dot);
+          node.appendChild(circleEl);
+
+          const todaySpan = document.createElement('span');
+          todaySpan.className = 'text-xs font-mono font-bold px-2 py-0.5 rounded-full bg-cyberNeon text-[#06111F] mt-1.5 shadow-sm';
+          todaySpan.textContent = '今天';
+          const weekSpan = document.createElement('span');
+          weekSpan.className = 'text-[11px] font-mono text-cyberTextDim mt-0.5';
+          weekSpan.textContent = wName;
+          node.append(todaySpan, weekSpan);
           openNode(() => openDoseModal());
         } else if (projectedDose) {
           // 设计稿的“下次给药”是实线紫色环，不是虚线；尺寸与今天/已完成节点一致。
-          circleHtml = `<div class="w-10 h-10 rounded-full bg-[#0B1A2A] border-2 border-cyberPurple text-cyberPurple flex items-center justify-center shadow-[0_0_12px_rgba(168,139,255,0.42)] active:scale-95 transition"><i class="ph-bold ph-syringe text-lg"></i></div>`;
+          circleEl.className = 'w-10 h-10 rounded-full bg-[#0B1A2A] border-2 border-cyberPurple text-cyberPurple flex items-center justify-center shadow-[0_0_12px_rgba(168,139,255,0.42)] active:scale-95 transition';
+          const icon = document.createElement('i');
+          icon.className = 'ph-bold ph-syringe text-lg';
+          circleEl.appendChild(icon);
+          node.appendChild(circleEl);
+
           const forecastLabel = projectedDose.step === 1
             ? '下次给药'
             : `预计${projectedDose.seq}`;
-          labelHtml = `<span class="text-xs font-mono font-bold text-cyberPurple mt-1.5">${forecastLabel}</span><span class="text-[11px] font-mono text-cyberTextDim">${wName}</span>`;
+          const forecastSpan = document.createElement('span');
+          forecastSpan.className = 'text-xs font-mono font-bold text-cyberPurple mt-1.5';
+          forecastSpan.textContent = forecastLabel;
+          const weekSpan = document.createElement('span');
+          weekSpan.className = 'text-[11px] font-mono text-cyberTextDim';
+          weekSpan.textContent = wName;
+          node.append(forecastSpan, weekSpan);
           openNode(() => {
             openDoseModal();
             const seqInput = document.getElementById('doseSeqInput');
@@ -3681,15 +3761,26 @@
             ? 'border-cyberNeon shadow-[0_0_12px_rgba(39,242,195,0.42)]'
             : 'border-[rgba(83,106,132,0.78)] shadow-[0_0_0_1px_rgba(6,17,31,0.55)]';
           const pastCheck = weightOnThisDay ? 'text-cyberNeon' : 'text-[rgba(111,139,168,0.95)]';
-          circleHtml = `<div class="w-10 h-10 rounded-full bg-[#0B1A2A] border-2 ${pastBorder} flex items-center justify-center active:scale-95 transition"><i class="ph-bold ph-check text-lg ${pastCheck}"></i></div>`;
-          labelHtml = `<span class="text-[11px] font-mono text-cyberTextDim mt-1.5">${wName}</span>`;
+          circleEl.className = `w-10 h-10 rounded-full bg-[#0B1A2A] border-2 ${pastBorder} flex items-center justify-center active:scale-95 transition`;
+          const icon = document.createElement('i');
+          icon.className = `ph-bold ph-check text-lg ${pastCheck}`;
+          circleEl.appendChild(icon);
+          const weekSpan = document.createElement('span');
+          weekSpan.className = 'text-[11px] font-mono text-cyberTextDim mt-1.5';
+          weekSpan.textContent = wName;
+          node.append(circleEl, weekSpan);
           openNode(() => openDoseModal());
         } else {
-          circleHtml = `<div class="w-10 h-10 rounded-full bg-[#081522] border-2 border-[rgba(62,84,108,0.78)] flex items-center justify-center shadow-[0_0_0_1px_rgba(6,17,31,0.55)]"><div class="w-2 h-2 rounded-full bg-[rgba(109,133,159,0.5)]"></div></div>`;
-          labelHtml = `<span class="text-[11px] font-mono text-cyberTextDim mt-1.5">${wName}</span>`;
+          circleEl.className = 'w-10 h-10 rounded-full bg-[#081522] border-2 border-[rgba(62,84,108,0.78)] flex items-center justify-center shadow-[0_0_0_1px_rgba(6,17,31,0.55)]';
+          const dot = document.createElement('div');
+          dot.className = 'w-2 h-2 rounded-full bg-[rgba(109,133,159,0.5)]';
+          circleEl.appendChild(dot);
+          const weekSpan = document.createElement('span');
+          weekSpan.className = 'text-[11px] font-mono text-cyberTextDim mt-1.5';
+          weekSpan.textContent = wName;
+          node.append(circleEl, weekSpan);
           openNode(() => openDoseModal());
         }
-        node.innerHTML = `<span class="text-xs font-mono text-cyberTextDim mb-1">${dayLabel}</span>${circleHtml}${labelHtml}`;
         container.appendChild(node);
       }
       bindTimelineDrag();
@@ -3720,9 +3811,13 @@
           `PointerEvent=${typeof window.PointerEvent === 'function' ? 'yes' : 'no'}`,
           `input=${useTouchEvents ? 'touch' : 'pointer'}`
         ].join(' | ');
-        timelineDebugOverlay.innerHTML = `<div style="color:#F4F7FB;margin-bottom:4px;">[时间轴手势调试]<br>${capabilities}</div><div data-role="log-list"></div>`;
+        const headerBox = document.createElement('div');
+        headerBox.style.cssText = 'color:#F4F7FB;margin-bottom:4px;white-space:pre-line;';
+        headerBox.textContent = `[时间轴手势调试]\n${capabilities}`;
+        timelineDebugOverlayList = document.createElement('div');
+        timelineDebugOverlayList.dataset.role = 'log-list';
+        timelineDebugOverlay.append(headerBox, timelineDebugOverlayList);
         document.body.appendChild(timelineDebugOverlay);
-        timelineDebugOverlayList = timelineDebugOverlay.querySelector('[data-role="log-list"]');
       }
       const timelineDebugLog = (phase, details = {}) => {
         if (!timelineDebugEnabled) return;
@@ -3985,7 +4080,7 @@
       const btnNext = document.getElementById('btnNextRecordsPage');
       if (!container) return;
 
-      container.innerHTML = '';
+      container.replaceChildren();
       const pendingDels = getPendingDeletions();
       const sorted = [...weightRecords]
         .filter(r => !pendingDels.includes(r.id))
@@ -4024,20 +4119,7 @@
       const pageRecords = sorted.slice(startIndex, startIndex + RECORDS_PAGE_SIZE);
 
       pageRecords.forEach((item) => {
-        // 性能优化：使用 find 代替 filter，避免全量数组无谓遍历分配
         const prev = sorted.find(r => (r.timestamp || 0) < (item.timestamp || 0));
-        let diffBadge = '';
-        if (prev) {
-          const diff = (item.weight - prev.weight).toFixed(1);
-          if (diff < 0) {
-            diffBadge = `<span class="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-xs font-mono font-bold bg-cyberNeon/15 text-cyberNeon">${diff} 斤 ↓</span>`;
-          } else if (diff > 0) {
-            diffBadge = `<span class="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-xs font-mono font-bold bg-amber-400/15 text-amber-400">+${diff} 斤 ↑</span>`;
-          } else {
-            diffBadge = `<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-mono text-neutral-400 bg-white/5">持平</span>`;
-          }
-        }
-
         const photoSource = (item.photo && (item.photo.startsWith('data:') || item.photo.startsWith('blob:') || item.photo.startsWith('<svg')))
           ? item.photo
           : (item.photo || item.photoPath || '');
@@ -4046,57 +4128,109 @@
         const card = document.createElement('div');
         card.className = 'glass-surface rounded-2xl p-3 record-card flex items-center justify-between gap-3 border border-[rgba(145,166,190,0.18)] hover:border-cyberNeon/30 transition';
 
-        // 格式化日期：MM-DD HH:MM
         let dateTimeStr = '';
         if (item.date) {
-          const parts = item.date.split('-');
-          const md = parts.length >= 3 ? `${parts[1]}-${parts[2]}` : item.date;
+          const parts = String(item.date).split('-');
+          const md = parts.length >= 3 ? `${parts[1]}-${parts[2]}` : String(item.date);
           dateTimeStr = `${md} ${item.time || '08:00'}`;
         }
 
-        card.innerHTML = `
-          <!-- 左侧照片跨两行 -->
-            <div class="relative w-20 h-20 rounded-2xl overflow-hidden bg-black/80 border border-cyberNeon/30 flex-shrink-0 cursor-pointer group/thumb hover:scale-105 transition" data-view-img="${item.id}">
-            ${photoUrl ? `
-              <img src="${photoUrl}" loading="lazy" decoding="async" onerror="this.classList.add('opacity-30');" class="w-full h-full object-cover">
-              <div class="absolute inset-0 bg-black/30 flex items-center justify-center opacity-0 group-hover/thumb:opacity-100 transition">
-                <i class="ph-bold ph-magnifying-glass text-white text-xs"></i>
-              </div>
-            ` : `
-              <div class="w-full h-full flex flex-col items-center justify-center text-neutral-600 hover:text-cyberCyan transition">
-                <i class="ph-bold ph-camera-plus text-lg"></i>
-                <span class="text-[9px] font-mono mt-0.5">补凭证</span>
-              </div>
-            `}
-          </div>
+        // 左侧照片跨两行（使用安全 DOM 构造替代 innerHTML，彻底根除存储型 XSS）
+        const thumbBox = document.createElement('div');
+        thumbBox.className = 'relative w-20 h-20 rounded-2xl overflow-hidden bg-black/80 border border-cyberNeon/30 flex-shrink-0 cursor-pointer group/thumb hover:scale-105 transition';
+        thumbBox.dataset.viewImg = item.id;
+        if (photoUrl) {
+          const img = document.createElement('img');
+          img.src = photoUrl;
+          img.alt = '秤面照片凭证';
+          img.loading = 'lazy';
+          img.decoding = 'async';
+          img.className = 'w-full h-full object-cover';
+          img.onerror = () => img.classList.add('opacity-30');
+          const hoverMask = document.createElement('div');
+          hoverMask.className = 'absolute inset-0 bg-black/30 flex items-center justify-center opacity-0 group-hover/thumb:opacity-100 transition';
+          const zoomIcon = document.createElement('i');
+          zoomIcon.className = 'ph-bold ph-magnifying-glass text-white text-xs';
+          hoverMask.appendChild(zoomIcon);
+          thumbBox.append(img, hoverMask);
+        } else {
+          const emptyBox = document.createElement('div');
+          emptyBox.className = 'w-full h-full flex flex-col items-center justify-center text-neutral-600 hover:text-cyberCyan transition';
+          const camIcon = document.createElement('i');
+          camIcon.className = 'ph-bold ph-camera-plus text-lg';
+          const camLabel = document.createElement('span');
+          camLabel.className = 'text-[9px] font-mono mt-0.5';
+          camLabel.textContent = '补凭证';
+          emptyBox.append(camIcon, camLabel);
+          thumbBox.appendChild(emptyBox);
+        }
 
-          <!-- 右侧两行信息 -->
-          <div class="flex-1 min-w-0 cursor-pointer" data-edit-record="${item.id}">
-            <!-- 第一行：体重、单位、差值 -->
-            <div class="flex items-center justify-between">
-              <div class="flex items-baseline gap-1.5">
-                <span class="text-3xl font-black font-mono tracking-tight text-white leading-none">${item.weight}</span>
-                <span class="text-xs font-mono font-bold text-cyberTextDim">斤</span>
-                <div class="ml-1">${diffBadge}</div>
-              </div>
-            </div>
+        // 右侧两行信息
+        const infoBox = document.createElement('div');
+        infoBox.className = 'flex-1 min-w-0 cursor-pointer';
+        infoBox.dataset.editRecord = item.id;
 
-            <!-- 第二行：日期、时间、状态标签、单行省略备注 -->
-            <div class="flex items-center gap-2 mt-1 text-xs font-mono text-cyberTextDim">
-              <span class="whitespace-nowrap">${dateTimeStr}</span>
-              <span class="px-1.5 py-0.5 rounded-md bg-white/5 border border-white/10 text-[10px] text-neutral-300 whitespace-nowrap">
-                ${item.condition || '空腹'}
-              </span>
-              ${item.remark ? `<span class="record-remark text-[11px] text-neutral-400 flex-1 truncate">${item.remark}</span>` : ''}
-            </div>
-          </div>
+        const row1 = document.createElement('div');
+        row1.className = 'flex items-center justify-between';
+        const weightGroup = document.createElement('div');
+        weightGroup.className = 'flex items-baseline gap-1.5';
+        const weightNum = document.createElement('span');
+        weightNum.className = 'text-3xl font-black font-mono tracking-tight text-white leading-none';
+        weightNum.textContent = String(item.weight);
+        const unitLabel = document.createElement('span');
+        unitLabel.className = 'text-xs font-mono font-bold text-cyberTextDim';
+        unitLabel.textContent = '斤';
+        weightGroup.append(weightNum, unitLabel);
 
-          <!-- 删除按钮 -->
-          <button type="button" aria-label="删除体重记录" data-del-record="${item.id}" class="w-8 h-8 rounded-lg bg-white/5 hover:bg-red-500/20 text-neutral-500 hover:text-red-400 flex items-center justify-center flex-shrink-0 transition" title="删除记录">
-            <i class="ph-bold ph-trash text-sm"></i>
-          </button>
-        `;
+        if (prev) {
+          const diffNum = Number((item.weight - prev.weight).toFixed(1));
+          const badgeWrap = document.createElement('div');
+          badgeWrap.className = 'ml-1';
+          const badge = document.createElement('span');
+          if (diffNum < 0) {
+            badge.className = 'inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-xs font-mono font-bold bg-cyberNeon/15 text-cyberNeon';
+            badge.textContent = `${diffNum.toFixed(1)} 斤 ↓`;
+          } else if (diffNum > 0) {
+            badge.className = 'inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-xs font-mono font-bold bg-amber-400/15 text-amber-400';
+            badge.textContent = `+${diffNum.toFixed(1)} 斤 ↑`;
+          } else {
+            badge.className = 'inline-flex items-center px-2 py-0.5 rounded-full text-xs font-mono text-neutral-400 bg-white/5';
+            badge.textContent = '持平';
+          }
+          badgeWrap.appendChild(badge);
+          weightGroup.appendChild(badgeWrap);
+        }
+        row1.appendChild(weightGroup);
 
+        const row2 = document.createElement('div');
+        row2.className = 'flex items-center gap-2 mt-1 text-xs font-mono text-cyberTextDim';
+        const dtSpan = document.createElement('span');
+        dtSpan.className = 'whitespace-nowrap';
+        dtSpan.textContent = dateTimeStr;
+        const condSpan = document.createElement('span');
+        condSpan.className = 'px-1.5 py-0.5 rounded-md bg-white/5 border border-white/10 text-[10px] text-neutral-300 whitespace-nowrap';
+        condSpan.textContent = item.condition || '空腹';
+        row2.append(dtSpan, condSpan);
+        if (item.remark) {
+          const remarkSpan = document.createElement('span');
+          remarkSpan.className = 'record-remark text-[11px] text-neutral-400 flex-1 truncate';
+          remarkSpan.textContent = item.remark;
+          row2.appendChild(remarkSpan);
+        }
+        infoBox.append(row1, row2);
+
+        // 删除按钮
+        const delBtn = document.createElement('button');
+        delBtn.type = 'button';
+        delBtn.setAttribute('aria-label', '删除体重记录');
+        delBtn.dataset.delRecord = item.id;
+        delBtn.className = 'w-8 h-8 rounded-lg bg-white/5 hover:bg-red-500/20 text-neutral-500 hover:text-red-400 flex items-center justify-center flex-shrink-0 transition';
+        delBtn.title = '删除记录';
+        const trashIcon = document.createElement('i');
+        trashIcon.className = 'ph-bold ph-trash text-sm';
+        delBtn.appendChild(trashIcon);
+
+        card.append(thumbBox, infoBox, delBtn);
         container.appendChild(card);
       });
 
@@ -4763,18 +4897,12 @@
           currentParsedImageBase64 = rotated;
           const thumb = document.getElementById('confirmPhotoThumb');
           if (thumb) thumb.src = rotated;
-          const context = {
-            requestId: 'ui-rot-' + Date.now(),
-            deadlineAt: performance.now() + 20000,
-            prepareMs: 0,
-            inputBytes: estimateDataUrlBytes(rotated),
-            inputMimeType: 'image/jpeg',
-            cancelled: false,
-            expired: false,
-            rotatedAttempt: true
-          };
-          activeScaleScanContext = context;
-          startScanCountdown(context);
+          const context = createScaleScanContext({
+            name: 'rotated.jpg',
+            type: 'image/jpeg',
+            size: estimateDataUrlBytes(rotated)
+          });
+          context.rotatedAttempt = true;
           await startScanRecognition(rotated, context);
         } catch (e) {
           showToast('图片旋转失败', 'error');
@@ -4969,10 +5097,7 @@
       const recordDate = new Date(`${date}T${time}:00`);
       const timestamp = !isNaN(recordDate.getTime()) ? recordDate.getTime() : Date.now();
 
-      if (saveBtn) {
-        saveBtn.disabled = true;
-        saveBtn.innerHTML = '<i class="ph-bold ph-spinner animate-spin"></i> 正在保存...';
-      }
+      setButtonPending(saveBtn, true, '正在保存...');
 
       if (activeWeightModalMode === 'edit' && editingRecordId) {
         // 编辑模式
@@ -5239,10 +5364,7 @@
       treatmentSchedule.site = site;
       saveScheduleToStorage();
 
-      if (saveBtn) {
-        saveBtn.disabled = true;
-        saveBtn.innerHTML = '<i class="ph-bold ph-spinner animate-spin"></i> 正在保存...';
-      }
+      setButtonPending(saveBtn, true, '正在保存...');
 
       if (editingDoseId) {
         // 编辑模式
@@ -5594,12 +5716,15 @@
         const unit = document.getElementById('healthMetricNewUnit').value.trim();
         if (!label || !unit) { showToast('请填写指标名称和报告单位', 'error'); return; }
         try {
-          await commitHealthMutation('/indicators', 'POST', { indicator: { id: 'metric-' + crypto.randomUUID(), label, unit } });
+          await sendHealthMutation('/indicators', 'POST', { indicator: { id: 'metric-' + crypto.randomUUID(), label, unit } });
           event.target.classList.add('hidden');
           document.getElementById('healthMetricNewName').value = '';
           document.getElementById('healthMetricNewUnit').value = '';
           showToast('指标已添加');
-        } catch (error) { showToast(error.message, 'error'); }
+        } catch (error) {
+          if (error.status === 409) await loadHealthPageData();
+          showToast(error.message, 'error');
+        }
       };
       document.getElementById('btnCancelAddHealthMetric').onclick = () => {
         document.getElementById('healthMetricAddForm').classList.add('hidden');
@@ -5781,21 +5906,16 @@
         };
       }
 
-      // 保存客户端 GitHub Token (高级设置)
+      // 保存客户端 GitHub Token (零信任架构已停用前端存储 PAT，仅保留清理逻辑与界面兼容)
       const inputUserGithubToken = document.getElementById('inputUserGithubToken');
       const btnSaveGithubToken = document.getElementById('btnSaveGithubToken');
       if (inputUserGithubToken && btnSaveGithubToken) {
-        inputUserGithubToken.value = localStorage.getItem('tirz_user_gh_token') || '';
+        inputUserGithubToken.value = '';
+        inputUserGithubToken.placeholder = '已启用服务端零信任托管，无需客户端令牌';
         btnSaveGithubToken.onclick = async () => {
-          const val = inputUserGithubToken.value.trim();
-          if (val) {
-            localStorage.setItem('tirz_user_gh_token', val);
-            showToast('已保存 GitHub Token');
-          } else {
-            localStorage.removeItem('tirz_user_gh_token');
-            showToast('已移除本地 GitHub Token');
-          }
-          await syncWithCloud(false);
+          localStorage.removeItem('tirz_user_gh_token');
+          inputUserGithubToken.value = '';
+          showToast('GitHub 令牌统一由云端安全托管，已清理本地残留');
         };
       }
 
@@ -5836,8 +5956,7 @@
             return;
           }
           if (loginErrorMsg) loginErrorMsg.classList.add('hidden');
-          btnSubmitLogin.disabled = true;
-          btnSubmitLogin.innerHTML = '<i class="ph-bold ph-spinner animate-spin"></i> 验证中...';
+          setButtonPending(btnSubmitLogin, true, '验证中...');
 
           try {
             await CloudStorageAdapter.login(email);
@@ -5846,14 +5965,21 @@
             updateSyncStatusUI();
             await syncWithCloud(true);
           } catch (err) {
-            if (loginErrorMsg) {
-              loginErrorMsg.textContent = err.message || '登录验证失败';
-              loginErrorMsg.classList.remove('hidden');
+            if (err.code === 'DEVICE_NOT_BOUND' && deviceSetupModal) {
+              if (authModal) authModal.classList.add('hidden');
+              const setupEmailInput = document.getElementById('setupEmailInput');
+              if (setupEmailInput && !setupEmailInput.value) setupEmailInput.value = email;
+              deviceSetupModal.classList.remove('hidden');
+              showToast('新设备首次使用，请输入初始化口令完成绑定', 'error');
+            } else {
+              if (loginErrorMsg) {
+                loginErrorMsg.textContent = err.message || '登录验证失败';
+                loginErrorMsg.classList.remove('hidden');
+              }
+              showToast(err.message || '登录失败', 'error');
             }
-            showToast(err.message || '登录失败', 'error');
           } finally {
-            btnSubmitLogin.disabled = false;
-            btnSubmitLogin.innerHTML = '一键授权绑定并登录';
+            setButtonPending(btnSubmitLogin, false, '一键授权绑定并登录');
           }
         };
       }
@@ -5879,17 +6005,21 @@
       if (btnSubmitSetup && setupEmailInput && setupSecretInput) {
         btnSubmitSetup.onclick = async () => {
           const email = setupEmailInput.value.trim();
-          const secret = setupSecretInput.value.trim() || 'tirz2026';
+          const secret = setupSecretInput.value.trim();
           if (!email) {
-            showToast('请填写邮箱', 'error');
+            showToast('请填写授权邮箱', 'error');
+            return;
+          }
+          if (!secret) {
+            showToast('请输入设备初始化密钥', 'error');
             return;
           }
           if (setupErrorMsg) setupErrorMsg.classList.add('hidden');
-          btnSubmitSetup.disabled = true;
-          btnSubmitSetup.innerHTML = '<i class="ph-bold ph-spinner animate-spin"></i> 正在绑定...';
+          setButtonPending(btnSubmitSetup, true, '正在绑定...');
 
           try {
             await CloudStorageAdapter.bootstrap(email, secret);
+            setupSecretInput.value = '';
             showToast('设备绑定成功！');
             if (deviceSetupModal) deviceSetupModal.classList.add('hidden');
             updateSyncStatusUI();
@@ -5901,8 +6031,7 @@
             }
             showToast(err.message || '绑定失败', 'error');
           } finally {
-            btnSubmitSetup.disabled = false;
-            btnSubmitSetup.innerHTML = '确认绑定当前手机';
+            setButtonPending(btnSubmitSetup, false, '确认绑定当前手机');
           }
         };
       }
@@ -5927,7 +6056,7 @@
 
       // 12. 前台唤醒时同步（节流：60 秒内已同步且未离线时跳过，且未绑定设备/本地体验时不发起无意义请求）
       document.addEventListener('visibilitychange', () => {
-        if (!document.hidden && !CloudStorageAdapter.sessionState.isLocalDemo && CloudStorageAdapter.sessionState.isDeviceBound) {
+        if (!document.hidden && !CloudStorageAdapter.sessionState.isLocalDemo && CloudStorageAdapter.sessionState.authenticated) {
           if (!syncState.lastSyncedAt || Date.now() - syncState.lastSyncedAt > 60_000) {
             syncWithCloud(true);
           }

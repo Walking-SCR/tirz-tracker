@@ -385,17 +385,17 @@ tirz-tracker-data/
 | `/api/auth/status` | `GET` | 可选（自动验签） | 查询登录与设备绑定状态、服务端密钥就绪状态，缺失 Cookie 时自动补齐 |
 | `/api/auth/login` | `POST` | 白名单邮箱校验 | 校验 `ALLOWED_EMAIL`，签发/续期 30 天会话与 180 天设备令牌 |
 | `/api/auth/bootstrap` | `POST` | 邮箱 + 初始化口令 | 新设备首次授权绑定（受 `BOOTSTRAP_ENABLED` 与 `BOOTSTRAP_SECRET` 控制） |
-| `/api/auth/logout` | `POST` | 无 | 清除 `tirz_session` 会话 Cookie |
-| `/api/records` | `GET` | 公开读（需服务端 Token） | 读取 `data/records.json` 体重记录列表 |
-| `/api/records` | `POST` | **需 Session** | 上传秤面照片（可选）并新增体重记录，失败自动回滚照片 |
-| `/api/records/:id` | `PATCH` / `DELETE` | **需 Session** | 更新记录/替换照片，或删除记录并清理关联私有照片 |
-| `/api/doses` | `GET` | 公开读（需服务端 Token） | 读取 `data/doses.json` 给药记录列表 |
+| `/api/auth/logout` | `POST` | 无 | 清除 `tirz_session` 会话并标记退出（`revokeDevice: true` 可连同设备解绑） |
+| `/api/records` | `GET` | **需 Session** | 读取 `data/records.json` 体重记录列表 |
+| `/api/records` | `POST` | **需 Session** | 上传秤面照片（可选）并新增体重记录，并发安全合并，失败自动回滚照片 |
+| `/api/records/:id` | `PATCH` / `DELETE` | **需 Session** | 更新记录/替换照片，或删除记录并后台清理关联私有照片 |
+| `/api/doses` | `GET` | **需 Session** | 读取 `data/doses.json` 给药记录列表 |
 | `/api/doses` | `POST` | **需 Session** | 新增 GLP-1 给药记录 |
 | `/api/doses/:id` | `PATCH` / `DELETE` | **需 Session** | 更新或幂等删除给药记录 |
-| `/api/photos/[health/]:yyyy/:mm/:file` | `GET` | 需服务端 Token | 从私有仓库安全拉取并解码返回照片二进制流 |
-| `/api/ai/analyze-scale` | `POST` | 同源/白名单 Origin | 电子秤读数多模态识别（MiniMax-M3 -> Vertex AI -> Gemini 公网端点） |
+| `/api/photos/[health/]:yyyy/:mm/:file` | `GET` | **需 Session** | 从私有仓库以流式原始字节（支持 >1MB 大图）安全拉取返回照片二进制流 |
+| `/api/ai/analyze-scale` | `POST` | **需 Session** | 电子秤读数多模态识别（MiniMax-M3 -> Vertex AI -> Gemini 公网端点） |
 | `/api/health` | `GET` / `PUT` | **需 Session** | 读取完整健康文档，或更新用药计划与日历启用状态（强校验 `expectedRevision`） |
-| `/api/health/analyze` | `POST` | **需 Session** | 调用 Vertex AI Gemini 识别肝酶化验单日期与指标（需人工确认后保存） |
+| `/api/health/analyze` | `POST` | **需 Session** | 调用 Vertex AI / 公网 Gemini 识别化验单日期与已配置指标（支持自定义指标，需人工确认后保存） |
 | `/api/health/reports[/:id]` | `POST` / `PATCH` / `DELETE` | **需 Session** | 新增、编辑或确认删除检查报告及私有报告图片（乐观锁保护） |
 | `/api/health/indicators[/:id]` | `POST` / `PATCH` / `DELETE` | **需 Session** | 新增自定义指标、切换指标显隐或级联删除该指标观测值 |
 | `/api/health/tasks` | `POST` | **需 Session** | 记录当日用药任务完成（`complete`）、撤销（`undo`）或稍后提醒（`snooze`） |

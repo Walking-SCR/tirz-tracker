@@ -12,11 +12,11 @@ export function getEffectiveGithubToken(env) {
   );
 }
 
-function getHeaders(env) {
+function getHeaders(env, accept = 'application/vnd.github.v3+json') {
   const token = getEffectiveGithubToken(env);
   const headers = {
     'User-Agent': 'tirz-tracker-cloudflare-worker',
-    'Accept': 'application/vnd.github.v3+json'
+    'Accept': accept
   };
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
@@ -36,12 +36,13 @@ function getBranch(env) {
   return env.GITHUB_BRANCH || 'main';
 }
 
-// UTF-8 字符串转 Base64
+// UTF-8 字符串转 Base64（分块处理，防止超大 JSON 在 String.fromCharCode 中出现性能或栈上限问题）
 function utf8ToBase64(str) {
   const bytes = new TextEncoder().encode(str);
+  const chunkSize = 0x8000;
   let binary = '';
-  for (let i = 0; i < bytes.length; i++) {
-    binary += String.fromCharCode(bytes[i]);
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
   }
   return btoa(binary);
 }
@@ -54,13 +55,17 @@ function base64ToUtf8(b64) {
   return new TextDecoder('utf-8').decode(bytes);
 }
 
+function isConflictError(err) {
+  return /GitHub putFile .* error 409/i.test(String(err?.message || ''));
+}
+
 // 从 GitHub 获取文件元数据与内容
 export async function getFile(env, filePath) {
   const owner = getOwner(env);
   const repo = getDataRepo(env);
   const branch = getBranch(env);
 
-  const url = `https://api.github.com/repos/${owner}/${repo}/contents/${filePath}?ref=${branch}&_t=${Date.now()}`;
+  const url = `https://api.github.com/repos/${owner}/${repo}/contents/${filePath}?ref=${encodeURIComponent(branch)}&_t=${Date.now()}`;
   const res = await fetch(url, {
     headers: getHeaders(env)
   });
@@ -72,11 +77,22 @@ export async function getFile(env, filePath) {
   }
 
   const data = await res.json();
+  // 若文件超过 1MB，GitHub Contents API 返回的 content 为空字符串，需通过 Git Blobs API 拉取完整内容
+  if (data && !data.content && data.sha && Number(data.size) > 0) {
+    const blobUrl = `https://api.github.com/repos/${owner}/${repo}/git/blobs/${data.sha}`;
+    const blobRes = await fetch(blobUrl, { headers: getHeaders(env) });
+    if (blobRes.ok) {
+      const blobData = await blobRes.json();
+      if (blobData?.content) {
+        data.content = blobData.content;
+      }
+    }
+  }
   return data; // { sha, content, size, path, ... }
 }
 
-// 写入或更新 GitHub 文件，遇 409 冲突时自动重试
-export async function putFile(env, filePath, contentBase64, commitMessage, sha = null, retryCount = 0) {
+// 写入或更新 GitHub 文件（默认不盲目用旧快照覆盖新 SHA，并发合并由业务层 updateRecordsAtomic / updateDosesAtomic 处理）
+export async function putFile(env, filePath, contentBase64, commitMessage, sha = null, allowBlindRetry = false) {
   const owner = getOwner(env);
   const repo = getDataRepo(env);
   const branch = getBranch(env);
@@ -85,7 +101,7 @@ export async function putFile(env, filePath, contentBase64, commitMessage, sha =
   const body = {
     message: commitMessage,
     content: contentBase64,
-    branch: branch
+    branch
   };
   if (sha) body.sha = sha;
 
@@ -98,11 +114,9 @@ export async function putFile(env, filePath, contentBase64, commitMessage, sha =
     body: JSON.stringify(body)
   });
 
-  if (res.status === 409 && retryCount < 1) {
-    // 409 冲突：说明有其他写入同时发生，重新拉取最新 SHA 后重试一次
-    console.warn(`409 Conflict on ${filePath}, retrying once...`);
+  if (res.status === 409 && allowBlindRetry) {
     const latest = await getFile(env, filePath);
-    return await putFile(env, filePath, contentBase64, commitMessage, latest ? latest.sha : null, retryCount + 1);
+    return await putFile(env, filePath, contentBase64, commitMessage, latest ? latest.sha : null, false);
   }
 
   if (!res.ok) {
@@ -128,8 +142,8 @@ export async function deleteFile(env, filePath, sha, commitMessage = 'Delete fil
     },
     body: JSON.stringify({
       message: commitMessage,
-      sha: sha,
-      branch: branch
+      sha,
+      branch
     })
   });
   return res.ok;
@@ -172,7 +186,7 @@ export async function saveRecords(env, records, message = 'Update biometric reco
           parsed.lastUpdated = new Date().toISOString();
           dataToSave = parsed;
         }
-      } catch (e) {}
+      } catch {}
     }
   }
   if (!dataToSave) {
@@ -187,6 +201,30 @@ export async function saveRecords(env, records, message = 'Update biometric reco
   return await putFile(env, 'data/records.json', b64, message, sha);
 }
 
+// 并发安全的体重记录读-改-写：若遇 GitHub 409 SHA 冲突，重新拉取最新列表并重放 mutator，避免静默丢失并发写入
+export async function mutateRecordsWithRetry(env, mutator, commitMessage, initialSnapshot = null, maxRetries = 2) {
+  let attempt = 0;
+  while (true) {
+    const snapshot = (attempt === 0 && initialSnapshot) ? initialSnapshot : await getRecords(env);
+    const working = structuredClone(snapshot.records);
+    const outcome = await mutator(working);
+    if (outcome?.abort) {
+      return outcome;
+    }
+    const nextRecords = outcome?.records ?? working;
+    try {
+      await saveRecords(env, nextRecords, outcome?.message || commitMessage, snapshot.sha, snapshot.rawParsed);
+      return { ...outcome, records: nextRecords };
+    } catch (err) {
+      if (isConflictError(err) && attempt < maxRetries) {
+        attempt += 1;
+        continue;
+      }
+      throw err;
+    }
+  }
+}
+
 // 读取用药记录数组
 export async function getDoses(env) {
   const file = await getFile(env, 'data/doses.json');
@@ -194,7 +232,6 @@ export async function getDoses(env) {
     try {
       const jsonStr = base64ToUtf8(file.content);
       const parsed = JSON.parse(jsonStr);
-      // 空数组也是有效的云端状态。
       const doses = Array.isArray(parsed)
         ? parsed
         : (parsed && Array.isArray(parsed.doses) ? parsed.doses : null);
@@ -217,6 +254,33 @@ export async function saveDoses(env, doses, message = 'Update GLP-1 doses', know
   return await putFile(env, 'data/doses.json', b64, message, sha);
 }
 
+// 并发安全的给药记录读-改-写：遇 409 自动基于最新列表重算变更
+export async function mutateDosesWithRetry(env, mutator, commitMessage, maxRetries = 2) {
+  let attempt = 0;
+  while (true) {
+    const snapshot = await getDoses(env);
+    const working = structuredClone(snapshot.doses);
+    const outcome = await mutator(working);
+    if (outcome?.abort) {
+      return outcome;
+    }
+    const nextDoses = outcome?.doses ?? working;
+    if (outcome?.skipSave) {
+      return { ...outcome, doses: nextDoses };
+    }
+    try {
+      await saveDoses(env, nextDoses, outcome?.message || commitMessage, snapshot.sha);
+      return { ...outcome, doses: nextDoses };
+    } catch (err) {
+      if (isConflictError(err) && attempt < maxRetries) {
+        attempt += 1;
+        continue;
+      }
+      throw err;
+    }
+  }
+}
+
 // Health data lives in its own private document and never falls back to weight/dose data.
 export async function getHealthDocument(env) {
   const file = await getFile(env, 'data/health.json');
@@ -228,7 +292,7 @@ export async function getHealthDocument(env) {
     }
     return { document, sha: file.sha };
   } catch (error) {
-    throw new Error('HEALTH_DATA_INVALID: ' + error.message);
+    throw new Error('HEALTH_DATA_INVALID: ' + error.message, { cause: error });
   }
 }
 
@@ -236,7 +300,7 @@ export async function saveHealthDocument(env, document, sha, message = 'Update p
   const encoded = utf8ToBase64(JSON.stringify(document, null, 2));
   // Do not retry a stale health document with a new SHA; let the caller reload
   // and resolve the concurrent edit instead of overwriting another update.
-  return await putFile(env, 'data/health.json', encoded, message, sha, 1);
+  return await putFile(env, 'data/health.json', encoded, message, sha, false);
 }
 
 function imageExtensionFromDataUrl(base64Data) {
@@ -249,39 +313,61 @@ function imageExtensionFromDataUrl(base64Data) {
   return 'webp';
 }
 
-// 上传照片，文件扩展名与图片实际 MIME 类型保持一致
+function contentTypeFromPhotoPath(photoPath) {
+  if (photoPath.endsWith('.png')) return 'image/png';
+  if (photoPath.endsWith('.jpg') || photoPath.endsWith('.jpeg')) return 'image/jpeg';
+  if (photoPath.endsWith('.heic')) return 'image/heic';
+  if (photoPath.endsWith('.heif')) return 'image/heif';
+  return 'image/webp';
+}
+
+// 上传照片，文件扩展名与图片实际 MIME 类型保持一致（同名文件极低概率碰撞时允许覆盖）
 export async function uploadPhoto(env, year, month, filename, base64Data) {
   const extension = imageExtensionFromDataUrl(base64Data);
   const baseName = String(filename || 'photo').replace(/\.[a-z0-9]+$/i, '');
   const targetPath = `images/${year}/${month}/${baseName}.${extension}`;
-  const pureBase64 = base64Data.replace(/^data:image\/[a-z0-9]+;base64,/, '').replace(/\s/g, '');
-  const commitRes = await putFile(env, targetPath, pureBase64, `Upload scale photo ${filename}`);
+  const pureBase64 = base64Data.replace(/^data:image\/[a-z0-9.+-]+;base64,/i, '').replace(/\s/g, '');
+  const commitRes = await putFile(env, targetPath, pureBase64, `Upload scale photo ${filename}`, null, true);
   return {
     path: targetPath,
     sha: commitRes.content ? commitRes.content.sha : null
   };
 }
 
-// 通过 GitHub API 的 JSON 响应安全获取私有照片，避免 302 跨域重定向导致响应头被剥离
+// 安全获取私有照片：兼容 >1MB 大图直接流式拉取二进制（application/vnd.github.raw+json）与 JSON Base64 响应（单测兼容）
 export async function fetchPrivatePhoto(env, photoPath) {
-  const file = await getFile(env, photoPath);
-  if (!file || !file.content) return null;
+  const owner = getOwner(env);
+  const repo = getDataRepo(env);
+  const branch = getBranch(env);
 
-  const binary = atob(file.content.replace(/\s/g, ''));
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) {
-    bytes[i] = binary.charCodeAt(i);
+  const url = `https://api.github.com/repos/${owner}/${repo}/contents/${photoPath}?ref=${encodeURIComponent(branch)}`;
+  const res = await fetch(url, {
+    headers: getHeaders(env, 'application/vnd.github.raw+json')
+  });
+
+  if (res.status === 404) return null;
+  if (!res.ok) {
+    const errText = await res.text().catch(() => '');
+    throw new Error(`GitHub fetchPrivatePhoto [${photoPath}] error ${res.status}: ${errText}`);
   }
 
-  const contentType = photoPath.endsWith('.png')
-    ? 'image/png'
-    : (photoPath.endsWith('.jpg') || photoPath.endsWith('.jpeg'))
-      ? 'image/jpeg'
-      : (photoPath.endsWith('.heic')
-        ? 'image/heic'
-        : (photoPath.endsWith('.heif') ? 'image/heif' : 'image/webp'));
+  const respContentType = (res.headers.get('Content-Type') || '').toLowerCase();
+  // 若返回的是 GitHub Contents JSON（例如单元测试 mock 或旧接口格式），解码其 base64 content
+  if (respContentType.includes('application/json')) {
+    const file = await res.json();
+    if (!file || !file.content) return null;
+    const binary = atob(file.content.replace(/\s/g, ''));
+    const bytes = Uint8Array.from(binary, c => c.charCodeAt(0));
+    return {
+      body: bytes,
+      contentType: contentTypeFromPhotoPath(photoPath)
+    };
+  }
+
+  // 生产环境下 GitHub raw media type 直接返回原始图片二进制流，突破 1MB Base64 限制并免除 CPU 解码开销
+  const bytes = new Uint8Array(await res.arrayBuffer());
   return {
     body: bytes,
-    contentType: contentType
+    contentType: contentTypeFromPhotoPath(photoPath)
   };
 }

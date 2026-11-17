@@ -300,3 +300,73 @@ test('source-order preview is not promoted into a dated chronological trend', ()
   assert.equal(sourceOrderObservations(document, 'ALT').length, 1);
   assert.equal(chronologicalObservations(document, 'ALT').length, 0);
 });
+
+test('health report OCR falls back from Vertex to public Gemini endpoint and supports custom metrics', async () => {
+  const originalFetch = globalThis.fetch;
+  const calledUrls = [];
+  globalThis.fetch = async (input) => {
+    const u = String(input);
+    calledUrls.push(u);
+    if (u.includes('aiplatform.googleapis.com')) {
+      return new Response(JSON.stringify({ error: { message: 'User location is not supported for the API use.' } }), { status: 400 });
+    }
+    return new Response(JSON.stringify({
+      candidates: [{ content: { parts: [{ text: JSON.stringify({
+        dateCandidates: [{ value: '2026-10-18', type: 'examination', rawLabel: '检验时间' }],
+        observations: [
+          { metricCode: 'ALT', sourceLabel: '谷丙转氨酶', value: 42, unit: 'U/L', referenceRange: { lower: 9, upper: 50 } },
+          { metricCode: 'metric-ggt', sourceLabel: 'γ-谷氨酰转肽酶', value: 38, unit: 'U/L', referenceRange: { lower: 10, upper: 60 } }
+        ]
+      }) }] } }]
+    }), { status: 200 });
+  };
+
+  try {
+    const res = await handleHealthRoutes(request('/api/health/analyze', 'POST', {
+      imageBase64: 'data:image/jpeg;base64,' + 'A'.repeat(160),
+      indicators: [{ id: 'metric-ggt', code: null, label: 'GGT · 谷氨酰转肽酶', unit: 'U/L' }]
+    }), token, new URL('https://tracker.test/api/health/analyze'), session);
+    const body = await res.json();
+    assert.equal(res.status, 200);
+    assert.equal(calledUrls.length, 2);
+    assert.match(calledUrls[0], /aiplatform\.googleapis\.com/);
+    assert.match(calledUrls[1], /generativelanguage\.googleapis\.com/);
+    assert.deepEqual(body.extraction.observations.map(o => o.metricId), ['alt', 'metric-ggt']);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('deleting one custom indicator does not accidentally wipe other custom indicators sharing code: null', async () => {
+  const originalFetch = globalThis.fetch;
+  const document = createEmptyHealthDocument();
+  document.revision = 1;
+  document.indicators.push(
+    { id: 'metric-ggt', code: null, label: 'GGT', unit: 'U/L', visible: true, deletedAt: null },
+    { id: 'metric-alp', code: null, label: 'ALP', unit: 'U/L', visible: true, deletedAt: null }
+  );
+  document.reports = [{
+    id: 'lab-custom', sourceOrder: 1, dateConfirmed: false,
+    observations: [
+      { metricId: 'metric-ggt', metricCode: null, value: 38, unit: 'U/L', referenceRange: null },
+      { metricId: 'metric-alp', metricCode: null, value: 75, unit: 'U/L', referenceRange: null }
+    ]
+  }];
+  let savedDocument = null;
+  globalThis.fetch = async (_input, init = {}) => {
+    if (init.method === 'PUT') {
+      savedDocument = JSON.parse(Buffer.from(JSON.parse(init.body).content, 'base64').toString('utf8'));
+      return new Response(JSON.stringify({ content: { sha: 'sha-2' } }), { status: 200 });
+    }
+    return new Response(JSON.stringify(githubFile(document)), { status: 200 });
+  };
+  try {
+    const res = await handleHealthRoutes(request('/api/health/indicators/metric-ggt', 'DELETE', {
+      expectedRevision: 1, confirmDelete: true
+    }), token, new URL('https://tracker.test/api/health/indicators/metric-ggt'), session);
+    assert.equal(res.status, 200);
+    assert.deepEqual(savedDocument.reports[0].observations.map(o => o.metricId), ['metric-alp']);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
